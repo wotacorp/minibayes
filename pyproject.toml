@@ -5,15 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "minibayes"
 version = "0.1.0"
-description = "minibayes is a minimal, lightweight Bayesian inference library designed for production deployment on resource-constrained environments (edge devices, containers, small cloud instances) while remaining lightweight and hackable."
+description = "A lightweight library for Bayesian inference designed for production deployment on resource-constrained environments."
 readme = "README.md"
-license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "radusz", email = "theo@radusz.com" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

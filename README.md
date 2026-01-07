@@ -1,6 +1,6 @@
 # minibayes
 
-A minimal, lightweight Bayesian inference library designed for production deployment on resource-constrained environments (edge devices, containers, small cloud instances) while remaining lightweight and hackable.
+A lightweight library for Bayesian inference designed for production deployment on resource-constrained environments.
 
 ## Installation
 
