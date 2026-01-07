@@ -74,6 +74,60 @@ uv build
 - Document array shapes in docstrings: `shape (n, m)`
 - Specify dtypes explicitly when it matters
 
+### Strict mypy with NumPy
+
+This project uses strict mypy (`disallow_any_expr=true`). NumPy operations often return generic types that mypy flags as `Any`. Use these patterns:
+
+```python
+# Pattern 1: Annotate all intermediate array variables
+def forward(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
+    arr: NDArray[np.float64] = np.asarray(x, dtype=np.float64)
+    result: NDArray[np.float64] = np.log(arr)
+    return result
+
+# Pattern 2: Use np.reciprocal() instead of 1/array (avoids Any)
+denom: NDArray[np.float64] = 1 + np.exp(-arr)
+result: NDArray[np.float64] = np.reciprocal(denom)  # Not: 1 / denom
+
+# Pattern 3: Wrap scalar numpy results in float()
+log_width: float = float(np.log(self._width))
+
+# Pattern 4: Break complex expressions into typed intermediates
+# Bad: np.log(x - low) + np.log(high - x) - np.log(width)
+# Good:
+log_low: NDArray[np.float64] = np.log(arr - self.low)
+log_high: NDArray[np.float64] = np.log(self.high - arr)
+log_width: float = float(np.log(self._width))
+result: NDArray[np.float64] = log_low + log_high - log_width
+```
+
+## Example
+
+```
+def log_sum_exp(x: NDArray[np.float64]) -> float:
+    """
+    Compute log(sum(exp(x))) in a numerically stable way.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input array.
+
+    Returns
+    -------
+    float
+        log(sum(exp(x)))
+    """
+    x = np.asarray(x)
+    max_val: float = float(np.max(x))
+    if np.isinf(max_val) and max_val < 0:
+        return float("-inf")
+    shifted: NDArray[np.float64] = x - max_val
+    exp_shifted: NDArray[np.float64] = np.exp(shifted)
+    sum_exp: float = float(np.sum(exp_shifted))
+    return max_val + float(np.log(sum_exp))
+```
+
 ## Verification
 
 Before committing:
