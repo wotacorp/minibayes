@@ -96,7 +96,8 @@ select = [
     "NPY", # numpy-specific rules
 ]
 ignore = [
-    "E501", # line too long (handled by formatter)
+    "E501",   # line too long (handled by formatter)
+    "TC002",  # numpy.typing imports - negligible overhead for numpy-based library
 ]
 
 [tool.ruff.lint.isort]

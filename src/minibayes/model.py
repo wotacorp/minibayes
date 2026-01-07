@@ -1,11 +1,14 @@
 """Model class for structured Bayesian inference."""
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from minibayes.distributions.base import Distribution
+from minibayes.exceptions import ModelSpecError
 from minibayes.transforms import Transform
+from minibayes.utils import ensure_rng
 
 
 class Model:
@@ -28,7 +31,17 @@ class Model:
         priors: dict[str, Distribution],
         likelihood: Callable[[dict[str, float], object], float],
     ) -> None:
-        raise NotImplementedError()
+        if not priors:
+            raise ModelSpecError("priors must be non-empty")
+
+        self._priors = priors
+        self._likelihood = likelihood
+        self._param_names = list(priors.keys())
+
+        # Build transforms from distribution support
+        self._transforms: dict[str, Transform] = {}
+        for name, prior in priors.items():
+            self._transforms[name] = prior.default_transform()
 
     # -------------------------------------------------------------------------
     # Explicit methods - no context-dependent magic
@@ -48,7 +61,12 @@ class Model:
         dict[str, float]
             Parameter values in constrained space.
         """
-        raise NotImplementedError()
+        generator: np.random.Generator = ensure_rng(rng)
+        result: dict[str, float] = {}
+        for name, prior in self._priors.items():
+            sample_val = prior.sample(size=None, rng=generator)
+            result[name] = float(sample_val)
+        return result
 
     def log_prior(self, params: dict[str, float]) -> float:
         """
@@ -64,7 +82,11 @@ class Model:
         float
             Sum of log_prob for each prior.
         """
-        raise NotImplementedError()
+        total: float = 0.0
+        for name, prior in self._priors.items():
+            lp = prior.log_prob(params[name])
+            total += float(lp)
+        return total
 
     def log_likelihood(self, params: dict[str, float], data: object) -> float:
         """
@@ -82,7 +104,7 @@ class Model:
         float
             Log likelihood value.
         """
-        raise NotImplementedError()
+        return self._likelihood(params, data)
 
     def log_prob(self, params: dict[str, float], data: object) -> float:
         """
@@ -100,7 +122,9 @@ class Model:
         float
             Log posterior (unnormalized).
         """
-        raise NotImplementedError()
+        lp: float = self.log_prior(params)
+        ll: float = self.log_likelihood(params, data)
+        return lp + ll
 
     # -------------------------------------------------------------------------
     # Transform handling - automatic but inspectable
@@ -122,7 +146,7 @@ class Model:
         dict[str, Transform]
             Transform for each parameter.
         """
-        raise NotImplementedError()
+        return self._transforms
 
     def to_unconstrained(self, params: dict[str, float]) -> dict[str, float]:
         """
@@ -140,7 +164,13 @@ class Model:
         dict
             Parameter values in unconstrained space.
         """
-        raise NotImplementedError()
+        result: dict[str, float] = {}
+        for name in self._param_names:
+            transform = self._transforms[name]
+            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(params[name]))
+            transformed: NDArray[np.float64] = transform.forward(scalar)
+            result[name] = float(transformed.flat[0])
+        return result
 
     def to_constrained(self, unconstrained: dict[str, float]) -> dict[str, float]:
         """
@@ -158,7 +188,13 @@ class Model:
         dict
             Parameter values in constrained space.
         """
-        raise NotImplementedError()
+        result: dict[str, float] = {}
+        for name in self._param_names:
+            transform = self._transforms[name]
+            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(unconstrained[name]))
+            constrained: NDArray[np.float64] = transform.inverse(scalar)
+            result[name] = float(constrained.flat[0])
+        return result
 
     def log_prob_unconstrained(
         self,
@@ -183,7 +219,22 @@ class Model:
         float
             Log posterior with Jacobian correction.
         """
-        raise NotImplementedError()
+        # Transform to constrained space
+        constrained: dict[str, float] = self.to_constrained(unconstrained)
+
+        # Compute log_prob in constrained space
+        lp: float = self.log_prob(constrained, data)
+
+        # Add Jacobian correction: sum of log|d(theta)/d(phi)|
+        jacobian_correction: float = 0.0
+        for name in self._param_names:
+            transform = self._transforms[name]
+            theta: float = constrained[name]
+            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(theta))
+            log_det: NDArray[np.float64] = transform.log_det_jacobian(scalar)
+            jacobian_correction += float(log_det.flat[0])
+
+        return lp + jacobian_correction
 
     # -------------------------------------------------------------------------
     # Introspection
@@ -199,7 +250,7 @@ class Model:
         list[str]
             Parameter names.
         """
-        raise NotImplementedError()
+        return self._param_names
 
     def validate_params(self, params: dict[str, float]) -> bool:
         """
@@ -217,7 +268,26 @@ class Model:
 
         Raises
         ------
-        MinibayesError
+        ModelSpecError
             If params are invalid, with details.
         """
-        raise NotImplementedError()
+        # Check parameter names
+        param_keys = set(params.keys())
+        expected_keys = set(self._param_names)
+
+        missing = expected_keys - param_keys
+        if missing:
+            raise ModelSpecError(f"Missing parameters: {missing}")
+
+        extra = param_keys - expected_keys
+        if extra:
+            raise ModelSpecError(f"Unknown parameters: {extra}")
+
+        # Check values are within support
+        for name, prior in self._priors.items():
+            value = params[name]
+            lp = prior.log_prob(value)
+            if not np.isfinite(float(lp)):
+                raise ModelSpecError(f"Parameter '{name}' value {value} is outside support")
+
+        return True

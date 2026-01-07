@@ -155,7 +155,7 @@ Before committing:
 | `transforms/` | ✓ Done | Identity, Log, Logit, Affine + `default_transform()` |
 | `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform |
 | **v0.2 Core** | | |
-| `model.py` | ✗ Skeleton | All methods raise NotImplementedError |
+| `model.py` | ✓ Done | Model class with transforms, Jacobian |
 | `samplers/mh.py` | ✗ Skeleton | MetropolisHastings not implemented |
 | `samplers/adaptive.py` | ✗ Skeleton | AdaptiveMetropolis not implemented |
 | `results.py` | ◐ Partial | Dataclass done; methods skeleton |
@@ -164,4 +164,4 @@ Before committing:
 | `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
 | `utils/export.py` | ✗ Skeleton | save/load not implemented |
 
-**Next steps:** Implement Model class, then MH sampler.
+**Next steps:** Implement MH sampler, then Adaptive MH.
