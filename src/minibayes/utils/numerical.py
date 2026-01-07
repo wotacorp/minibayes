@@ -3,6 +3,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from minibayes.exceptions import NumericalError
+
 
 def ensure_rng(seed: int | np.random.Generator | None = None) -> np.random.Generator:
     """
@@ -19,7 +21,9 @@ def ensure_rng(seed: int | np.random.Generator | None = None) -> np.random.Gener
     -------
     np.random.Generator
     """
-    raise NotImplementedError()
+    if isinstance(seed, np.random.Generator):
+        return seed
+    return np.random.default_rng(seed)
 
 
 def check_finite(value: float, name: str = "value") -> None:
@@ -38,7 +42,8 @@ def check_finite(value: float, name: str = "value") -> None:
     NumericalError
         If value is not finite.
     """
-    raise NotImplementedError()
+    if not np.isfinite(value):
+        raise NumericalError(f"{name} is not finite: {value}")
 
 
 def log_sum_exp(x: NDArray[np.float64]) -> float:
@@ -55,4 +60,11 @@ def log_sum_exp(x: NDArray[np.float64]) -> float:
     float
         log(sum(exp(x)))
     """
-    raise NotImplementedError()
+    x = np.asarray(x)
+    max_val: float = float(np.max(x))
+    if np.isinf(max_val) and max_val < 0:
+        return float("-inf")
+    shifted: NDArray[np.float64] = x - max_val
+    exp_shifted: NDArray[np.float64] = np.exp(shifted)
+    sum_exp: float = float(np.sum(exp_shifted))
+    return max_val + float(np.log(sum_exp))
