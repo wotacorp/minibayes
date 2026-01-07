@@ -97,4 +97,18 @@ class Distribution(ABC):
         Transform
             Transform instance for this distribution.
         """
-        raise NotImplementedError()
+        from minibayes.transforms import (
+            IdentityTransform,
+            LogitTransform,
+            LogTransform,
+        )
+
+        match self.support:
+            case Support.REAL:
+                return IdentityTransform()
+            case Support.POSITIVE:
+                return LogTransform()
+            case Support.UNIT:
+                return LogitTransform()
+            case Support.BOUNDED:
+                raise NotImplementedError("BOUNDED distributions must override default_transform() to provide bounds for AffineTransform")

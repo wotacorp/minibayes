@@ -10,16 +10,22 @@ class LogTransform(Transform):
     """
     Log transform for positive parameters.
 
-    forward: y = log(x)      [constrained -> unconstrained]
-    inverse: x = exp(y)      [unconstrained -> constrained]
-    log_det_jacobian: log(x) = y
+    forward: φ = log(θ)      [constrained -> unconstrained]
+    inverse: θ = exp(φ)      [unconstrained -> constrained]
+    log_det_jacobian: log|dθ/dφ| = φ = log(θ)
     """
 
     def forward(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
-        raise NotImplementedError()
+        arr: NDArray[np.float64] = np.asarray(x, dtype=np.float64)
+        result: NDArray[np.float64] = np.log(arr)
+        return result
 
     def inverse(self, y: NDArray[np.float64]) -> NDArray[np.float64]:
-        raise NotImplementedError()
+        arr: NDArray[np.float64] = np.asarray(y, dtype=np.float64)
+        result: NDArray[np.float64] = np.exp(arr)
+        return result
 
     def log_det_jacobian(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
-        raise NotImplementedError()
+        arr: NDArray[np.float64] = np.asarray(x, dtype=np.float64)
+        result: NDArray[np.float64] = np.log(arr)
+        return result
