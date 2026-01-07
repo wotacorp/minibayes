@@ -1,7 +1,5 @@
 """Export and import utilities for inference results."""
 
-from typing import Any
-
 from minibayes.results import InferenceResult
 
 
@@ -36,7 +34,7 @@ def load_npz(path: str) -> InferenceResult:
     raise NotImplementedError()
 
 
-def to_json(result: InferenceResult) -> dict[str, Any]:
+def to_json(result: InferenceResult) -> dict[str, object]:
     """
     Convert inference result to JSON-serializable dict.
 
