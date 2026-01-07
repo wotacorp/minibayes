@@ -1,20 +1,20 @@
 """MCMC inference engine."""
 
-from typing import Any, Callable
+from typing import Callable
 
 from minibayes.model import Model
 from minibayes.results import InferenceResult
 
 
 def sample(
-    model: Model | Callable[[dict[str, float], Any], float],
-    data: Any = None,
+    model: Model | Callable[[dict[str, float], object], float],
+    data: object = None,
     initial: dict[str, float] | None = None,
     num_samples: int = 1000,
     num_warmup: int = 500,
     num_chains: int = 1,
     sampler: str = "adaptive_mh",
-    sampler_kwargs: dict[str, Any] | None = None,
+    sampler_kwargs: dict[str, object] | None = None,
     seed: int | None = None,
 ) -> InferenceResult:
     """

@@ -1,6 +1,6 @@
 """Model class for structured Bayesian inference."""
 
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 
@@ -19,14 +19,14 @@ class Model:
     ----------
     priors : dict[str, Distribution]
         Prior distributions for each parameter.
-    likelihood : Callable[[dict, Any], float]
+    likelihood : Callable[[dict, object], float]
         Function (params, data) -> log_likelihood.
     """
 
     def __init__(
         self,
         priors: dict[str, Distribution],
-        likelihood: Callable[[dict[str, float], Any], float],
+        likelihood: Callable[[dict[str, float], object], float],
     ) -> None:
         raise NotImplementedError()
 
@@ -66,7 +66,7 @@ class Model:
         """
         raise NotImplementedError()
 
-    def log_likelihood(self, params: dict[str, float], data: Any) -> float:
+    def log_likelihood(self, params: dict[str, float], data: object) -> float:
         """
         Compute log likelihood.
 
@@ -74,7 +74,7 @@ class Model:
         ----------
         params : dict
             Parameter values in constrained space.
-        data : Any
+        data : object
             Observed data.
 
         Returns
@@ -84,7 +84,7 @@ class Model:
         """
         raise NotImplementedError()
 
-    def log_prob(self, params: dict[str, float], data: Any) -> float:
+    def log_prob(self, params: dict[str, float], data: object) -> float:
         """
         Compute unnormalized log posterior = log_prior + log_likelihood.
 
@@ -92,7 +92,7 @@ class Model:
         ----------
         params : dict
             Parameter values in constrained space.
-        data : Any
+        data : object
             Observed data.
 
         Returns
@@ -163,7 +163,7 @@ class Model:
     def log_prob_unconstrained(
         self,
         unconstrained: dict[str, float],
-        data: Any,
+        data: object,
     ) -> float:
         """
         Compute log_prob in unconstrained space.
@@ -175,7 +175,7 @@ class Model:
         ----------
         unconstrained : dict
             Parameter values in unconstrained space.
-        data : Any
+        data : object
             Observed data.
 
         Returns

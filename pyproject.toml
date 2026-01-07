@@ -29,6 +29,7 @@ dev = [
     "ruff>=0.8.0",
     "black>=24.0.0",
     "isort>=5.13.0",
+    "scipy>=1.11.0",
 ]
 
 [project.urls]
@@ -124,7 +125,6 @@ disallow_any_expr = true
 disallow_any_explicit = true
 disallow_any_generics = true
 disallow_subclassing_any = true
-plugins = ["numpy.typing.mypy_plugin"]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

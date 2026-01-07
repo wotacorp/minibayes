@@ -1,7 +1,6 @@
 """Inference results container."""
 
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -46,7 +45,7 @@ class InferenceResult:
         self,
         percentiles: list[int] | None = None,
         params: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """
         Compute summary statistics.
 
@@ -64,7 +63,7 @@ class InferenceResult:
         """
         raise NotImplementedError()
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """
         Convert to plain dict (for JSON serialization).
 
