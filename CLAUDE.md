@@ -143,3 +143,25 @@ Before committing:
 - No wildcard imports
 - No hardcoded secrets (use .env)
 - No commented-out code in commits
+
+## Implementation Progress
+
+**Update this section periodically as implementation proceeds.**
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **v0.1 Foundation** | | |
+| `utils/numerical.py` | ✓ Done | `ensure_rng`, `check_finite`, `log_sum_exp` |
+| `transforms/` | ✓ Done | Identity, Log, Logit, Affine + `default_transform()` |
+| `distributions/` | ✗ Skeleton | All 6 distributions need `log_prob`, `sample` |
+| **v0.2 Core** | | |
+| `model.py` | ✗ Skeleton | All methods raise NotImplementedError |
+| `samplers/mh.py` | ✗ Skeleton | MetropolisHastings not implemented |
+| `samplers/adaptive.py` | ✗ Skeleton | AdaptiveMetropolis not implemented |
+| `results.py` | ◐ Partial | Dataclass done; methods skeleton |
+| **v0.3 Interface** | | |
+| `inference.py` | ✗ Skeleton | `sample()` entry point not implemented |
+| `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
+| `utils/export.py` | ✗ Skeleton | save/load not implemented |
+
+**Next steps:** Implement distributions (Normal first), then Model class, then MH sampler.
