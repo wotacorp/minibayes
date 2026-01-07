@@ -153,7 +153,7 @@ Before committing:
 | **v0.1 Foundation** | | |
 | `utils/numerical.py` | ✓ Done | `ensure_rng`, `check_finite`, `log_sum_exp` |
 | `transforms/` | ✓ Done | Identity, Log, Logit, Affine + `default_transform()` |
-| `distributions/` | ✗ Skeleton | All 6 distributions need `log_prob`, `sample` |
+| `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform |
 | **v0.2 Core** | | |
 | `model.py` | ✗ Skeleton | All methods raise NotImplementedError |
 | `samplers/mh.py` | ✗ Skeleton | MetropolisHastings not implemented |
@@ -164,4 +164,4 @@ Before committing:
 | `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
 | `utils/export.py` | ✗ Skeleton | save/load not implemented |
 
-**Next steps:** Implement distributions (Normal first), then Model class, then MH sampler.
+**Next steps:** Implement Model class, then MH sampler.
