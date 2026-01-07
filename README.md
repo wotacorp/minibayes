@@ -36,3 +36,6 @@ uv run mypy src
 uv run ruff check src tests
 uv run ruff format src tests
 ```
+
+## Main maintainer
+[@theoradusz](https://github.com/theoradusz)
