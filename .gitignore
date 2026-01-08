@@ -49,3 +49,6 @@ scratch/
 # OS
 .DS_Store
 Thumbs.db
+
+# notebooks saved tests
+*.npz
