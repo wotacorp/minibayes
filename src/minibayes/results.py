@@ -18,11 +18,12 @@ class InferenceResult:
     ----------
     samples : dict[str, ndarray]
         Samples for each parameter in CONSTRAINED space.
-        Shape: (num_chains, num_samples) or (num_samples,) if num_chains=1.
+        Shape: (num_chains, num_samples).
     samples_unconstrained : dict[str, ndarray]
         Samples in unconstrained space (what sampler actually produced).
-    acceptance_rate : float or ndarray
-        Acceptance rate(s) per chain.
+        Shape: (num_chains, num_samples).
+    acceptance_rate : ndarray
+        Acceptance rate per chain. Shape: (num_chains,).
     num_samples : int
         Number of samples per chain.
     num_warmup : int
@@ -37,7 +38,7 @@ class InferenceResult:
 
     samples: dict[str, NDArray[np.float64]]
     samples_unconstrained: dict[str, NDArray[np.float64]]
-    acceptance_rate: float | NDArray[np.float64]
+    acceptance_rate: NDArray[np.float64]
     num_samples: int
     num_warmup: int
     num_chains: int
@@ -67,9 +68,7 @@ class InferenceResult:
         from minibayes.diagnostics import summary as compute_summary
 
         if params is not None:
-            filtered: dict[str, NDArray[np.float64]] = {
-                k: v for k, v in self.samples.items() if k in params
-            }
+            filtered: dict[str, NDArray[np.float64]] = {k: v for k, v in self.samples.items() if k in params}
         else:
             filtered = self.samples
 
@@ -176,15 +175,9 @@ class InferenceResult:
                 arr = np.asarray(v, dtype=np.float64)
                 samples_unconstrained[k] = arr
 
-        # Extract acceptance rate
-        acc_rate_raw: object = data.get("acceptance_rate", 0.0)
-        acceptance_rate: float | NDArray[np.float64]
-        if isinstance(acc_rate_raw, list):
-            acceptance_rate = np.asarray(acc_rate_raw, dtype=np.float64)
-        elif isinstance(acc_rate_raw, (int, float)):
-            acceptance_rate = float(acc_rate_raw)
-        else:
-            acceptance_rate = 0.0
+        # Extract acceptance rate as array
+        acc_rate_raw: object = data.get("acceptance_rate", [0.0])
+        acceptance_rate: NDArray[np.float64] = np.atleast_1d(np.asarray(acc_rate_raw, dtype=np.float64))
 
         # Extract scalar values
         num_samples_raw: object = data.get("num_samples", 0)

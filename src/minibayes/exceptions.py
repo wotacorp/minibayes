@@ -9,6 +9,10 @@ class SamplingError(MinibayesError):
     """Raised when sampling fails."""
 
 
+class SamplingTimeoutError(SamplingError):
+    """Raised when sampling exceeds the specified timeout."""
+
+
 class ConvergenceWarning(UserWarning):
     """Raised when diagnostics suggest non-convergence."""
 

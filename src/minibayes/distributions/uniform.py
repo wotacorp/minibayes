@@ -89,9 +89,7 @@ class Uniform(Distribution):
             Random sample(s), in [low, high].
         """
         generator: np.random.Generator = ensure_rng(rng)
-        samples: NDArray[np.float64] = generator.uniform(
-            low=self._low, high=self._high, size=size
-        )
+        samples: NDArray[np.float64] = generator.uniform(low=self._low, high=self._high, size=size)
         if size is None:
             return float(samples)
         return samples

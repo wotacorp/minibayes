@@ -80,12 +80,9 @@ def load_npz(path: str) -> InferenceResult:
                 name = key[len("unconstrained_") :]
                 samples_unconstrained[name] = cast("NDArray[np.float64]", npz_data[key])  # type: ignore[misc]
 
-        acc_rate_loaded: NDArray[np.float64] = cast("NDArray[np.float64]", npz_data["acceptance_rate"])  # type: ignore[misc]
-        acceptance_rate: float | NDArray[np.float64]
-        if acc_rate_loaded.ndim == 0:  # noqa: SIM108
-            acceptance_rate = float(acc_rate_loaded)
-        else:
-            acceptance_rate = acc_rate_loaded
+        acceptance_rate: NDArray[np.float64] = np.atleast_1d(
+            cast("NDArray[np.float64]", npz_data["acceptance_rate"])  # type: ignore[misc]
+        )
 
         return InferenceResult(
             samples=samples,
@@ -115,15 +112,8 @@ def to_json(result: InferenceResult) -> dict[str, object]:
     dict
         JSON-serializable dictionary.
     """
-    # Convert acceptance_rate to JSON-serializable type
-    acc_rate: float | list[float]
-    acc_rate_value = result.acceptance_rate
-    if hasattr(acc_rate_value, "tolist"):  # noqa: SIM108
-        # It's an ndarray
-        acc_rate = cast("list[float]", acc_rate_value.tolist())
-    else:
-        # It's already a float
-        acc_rate = cast("float", acc_rate_value)
+    # Convert acceptance_rate to JSON-serializable list
+    acc_rate: list[float] = cast("list[float]", result.acceptance_rate.tolist())
 
     # Build samples dicts
     samples_dict: dict[str, list[float]] = {}
