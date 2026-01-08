@@ -89,10 +89,15 @@ def forward(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
 denom: NDArray[np.float64] = 1 + np.exp(-arr)
 result: NDArray[np.float64] = np.reciprocal(denom)  # Not: 1 / denom
 
-# Pattern 3: Wrap scalar numpy results in float()
+# Pattern 3: Use typing.cast() for scalar aggregations (recommended by numpy docs)
+from typing import cast
+mean: float = cast("float", np.mean(samples))
+b_var: float = cast("float", np.var(chain_means, ddof=1))
+
+# Pattern 4: Wrap scalar numpy results in float() for simple cases
 log_width: float = float(np.log(self._width))
 
-# Pattern 4: Break complex expressions into typed intermediates
+# Pattern 5: Break complex expressions into typed intermediates
 # Bad: np.log(x - low) + np.log(high - x) - np.log(width)
 # Good:
 log_low: NDArray[np.float64] = np.log(arr - self.low)
@@ -158,10 +163,10 @@ Before committing:
 | `model.py` | ✓ Done | Model class with transforms, Jacobian |
 | `samplers/mh.py` | ✓ Done | MetropolisHastings with Gaussian proposals |
 | `samplers/adaptive.py` | ✓ Done | AdaptiveMetropolis with covariance tuning |
-| `results.py` | ◐ Partial | Dataclass done; methods skeleton |
+| `results.py` | ✓ Done | summary, to_dict, save/load methods |
 | **v0.3 Interface** | | |
 | `inference.py` | ✗ Skeleton | `sample()` entry point not implemented |
-| `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
-| `utils/export.py` | ✗ Skeleton | save/load not implemented |
+| `diagnostics.py` | ✓ Done | ESS (FFT-based), R-hat, summary |
+| `utils/export.py` | ✓ Done | save_npz, load_npz, to_json |
 
 **Next steps:** Implement `inference.py` sample() function.

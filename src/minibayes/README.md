@@ -180,6 +180,79 @@ def log_prob(params, data):
 # result = mb.sample(model=log_prob, data=y, initial={"mu": 0, "log_sigma": 0})
 ```
 
+## Inference Results
+
+After sampling, results are stored in an `InferenceResult` dataclass:
+
+```python
+# result = mb.sample(model, data, ...)
+
+# Access samples (constrained space)
+result.samples["mu"]       # NDArray of shape (num_samples,) or (num_chains, num_samples)
+result.samples["sigma"]
+
+# Metadata
+result.num_samples         # Number of samples per chain
+result.num_chains          # Number of chains
+result.acceptance_rate     # float or NDArray per chain
+result.elapsed_time        # Sampling time in seconds
+
+# Summary statistics
+summary = result.summary()
+# {'mu': {'mean': 2.01, 'std': 0.05, '5%': 1.93, '50%': 2.01, '95%': 2.09, 'ess': 890.2},
+#  'sigma': {'mean': 0.51, 'std': 0.04, '5%': 0.45, '50%': 0.51, '95%': 0.58, 'ess': 756.1, 'r_hat': 1.001}}
+
+# Custom percentiles
+result.summary(percentiles=[2.5, 50, 97.5])
+
+# Filter parameters
+result.summary(params=["mu"])
+```
+
+## Diagnostics
+
+Convergence diagnostics are available via the `diagnostics` module:
+
+```python
+from minibayes.diagnostics import effective_sample_size, r_hat, summary
+
+# Effective Sample Size (ESS) - accounts for autocorrelation
+samples = result.samples["mu"]  # 1D array
+ess = effective_sample_size(samples)  # float, typically < len(samples)
+
+# Gelman-Rubin R-hat (requires multiple chains)
+chains = result.samples["mu"]  # shape (num_chains, num_samples)
+rhat = r_hat(chains)  # ~1.0 for converged chains, >1.01 indicates issues
+
+# Summary for all parameters
+stats = summary(result.samples)
+# Returns dict with mean, std, percentiles, ess, and r_hat (if multi-chain)
+```
+
+### Interpreting Diagnostics
+
+| Diagnostic | Good Value | Concern |
+|------------|------------|---------|
+| ESS | > 400 | Low ESS indicates high autocorrelation |
+| R-hat | < 1.01 | R-hat > 1.01 suggests chains haven't converged |
+
+## Saving and Loading Results
+
+Results can be saved in NPZ (NumPy compressed) or JSON format:
+
+```python
+# Save to file
+result.save("posterior.npz")           # NPZ format (default, efficient)
+result.save("posterior.json", format="json")  # JSON format (portable)
+
+# Load from file
+loaded = mb.InferenceResult.load("posterior.npz")
+loaded = mb.InferenceResult.load("posterior.json")
+
+# Convert to dict (for JSON serialization)
+data = result.to_dict()
+```
+
 ## Design Principles
 
 1. **No magic**: Every operation is an explicit method call

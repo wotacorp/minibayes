@@ -1,6 +1,6 @@
 """MCMC inference engine."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from minibayes.model import Model
 from minibayes.results import InferenceResult

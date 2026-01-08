@@ -1,5 +1,8 @@
 """Inference results container."""
 
+from __future__ import annotations
+
+import json
 from dataclasses import dataclass
 
 import numpy as np
@@ -45,7 +48,7 @@ class InferenceResult:
         self,
         percentiles: list[int] | None = None,
         params: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> dict[str, dict[str, float]]:
         """
         Compute summary statistics.
 
@@ -58,10 +61,19 @@ class InferenceResult:
 
         Returns
         -------
-        dict
+        dict[str, dict[str, float]]
             Summary with keys: mean, std, percentiles, ess, r_hat.
         """
-        raise NotImplementedError()
+        from minibayes.diagnostics import summary as compute_summary
+
+        if params is not None:
+            filtered: dict[str, NDArray[np.float64]] = {
+                k: v for k, v in self.samples.items() if k in params
+            }
+        else:
+            filtered = self.samples
+
+        return compute_summary(filtered, percentiles)
 
     def to_dict(self) -> dict[str, object]:
         """
@@ -72,7 +84,9 @@ class InferenceResult:
         dict
             Dictionary representation of results.
         """
-        raise NotImplementedError()
+        from minibayes.utils.export import to_json
+
+        return to_json(self)
 
     def save(self, path: str, format: str = "npz") -> None:
         """
@@ -84,22 +98,117 @@ class InferenceResult:
             Output file path.
         format : str
             Format: "npz" (NumPy compressed) or "json".
+
+        Raises
+        ------
+        ValueError
+            If format is not "npz" or "json".
         """
-        raise NotImplementedError()
+        from minibayes.utils.export import save_npz, to_json
+
+        if format == "npz":
+            save_npz(self, path)
+        elif format == "json":
+            with open(path, "w") as f:
+                json.dump(to_json(self), f, indent=2)
+        else:
+            raise ValueError(f"Unknown format: {format}. Use 'npz' or 'json'.")
 
     @classmethod
-    def load(cls, path: str) -> "InferenceResult":
+    def load(cls, path: str) -> InferenceResult:
         """
         Load results from file.
 
         Parameters
         ----------
         path : str
-            Input file path.
+            Input file path. Format detected from extension (.npz or .json).
 
         Returns
         -------
         InferenceResult
             Loaded results.
         """
-        raise NotImplementedError()
+        from minibayes.utils.export import load_npz
+
+        if path.endswith(".npz"):
+            return load_npz(path)
+        elif path.endswith(".json"):
+            return cls._load_json(path)
+        else:
+            # Try npz first, fall back to json
+            try:
+                return load_npz(path)
+            except Exception:
+                return cls._load_json(path)
+
+    @classmethod
+    def _load_json(cls, path: str) -> InferenceResult:
+        """Load from JSON file."""
+        with open(path) as f:
+            raw_data: object = json.load(f)
+
+        # We know json.load returns a dict for our format
+        if not isinstance(raw_data, dict):
+            raise ValueError("JSON must contain a dictionary")
+
+        data: dict[str, object] = raw_data
+
+        # Extract samples
+        samples_raw: object = data.get("samples", {})
+        if not isinstance(samples_raw, dict):
+            raise ValueError("samples must be a dictionary")
+
+        samples: dict[str, NDArray[np.float64]] = {}
+        for k, v in samples_raw.items():
+            if isinstance(k, str):
+                arr: NDArray[np.float64] = np.asarray(v, dtype=np.float64)
+                samples[k] = arr
+
+        # Extract unconstrained samples
+        samples_unc_raw: object = data.get("samples_unconstrained", {})
+        if not isinstance(samples_unc_raw, dict):
+            raise ValueError("samples_unconstrained must be a dictionary")
+
+        samples_unconstrained: dict[str, NDArray[np.float64]] = {}
+        for k, v in samples_unc_raw.items():
+            if isinstance(k, str):
+                arr = np.asarray(v, dtype=np.float64)
+                samples_unconstrained[k] = arr
+
+        # Extract acceptance rate
+        acc_rate_raw: object = data.get("acceptance_rate", 0.0)
+        acceptance_rate: float | NDArray[np.float64]
+        if isinstance(acc_rate_raw, list):
+            acceptance_rate = np.asarray(acc_rate_raw, dtype=np.float64)
+        elif isinstance(acc_rate_raw, (int, float)):
+            acceptance_rate = float(acc_rate_raw)
+        else:
+            acceptance_rate = 0.0
+
+        # Extract scalar values
+        num_samples_raw: object = data.get("num_samples", 0)
+        num_samples: int = int(num_samples_raw) if isinstance(num_samples_raw, (int, float)) else 0
+
+        num_warmup_raw: object = data.get("num_warmup", 0)
+        num_warmup: int = int(num_warmup_raw) if isinstance(num_warmup_raw, (int, float)) else 0
+
+        num_chains_raw: object = data.get("num_chains", 1)
+        num_chains: int = int(num_chains_raw) if isinstance(num_chains_raw, (int, float)) else 1
+
+        sampler_raw: object = data.get("sampler", "")
+        sampler: str = str(sampler_raw) if isinstance(sampler_raw, str) else ""
+
+        elapsed_time_raw: object = data.get("elapsed_time", 0.0)
+        elapsed_time: float = float(elapsed_time_raw) if isinstance(elapsed_time_raw, (int, float)) else 0.0
+
+        return cls(
+            samples=samples,
+            samples_unconstrained=samples_unconstrained,
+            acceptance_rate=acceptance_rate,
+            num_samples=num_samples,
+            num_warmup=num_warmup,
+            num_chains=num_chains,
+            sampler=sampler,
+            elapsed_time=elapsed_time,
+        )
