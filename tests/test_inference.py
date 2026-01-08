@@ -22,13 +22,14 @@ class TestSample:
         result = mb.sample(model, data=data, num_samples=100, num_warmup=50, seed=42)
 
         assert "mu" in result.samples
-        assert len(result.samples["mu"]) == 100
+        assert result.samples["mu"].shape == (1, 100)
 
     def test_with_callable_raises(self) -> None:
         """Test sample() raises for non-Model input."""
+
         # sample() now only accepts Model, not Callable
         def log_prob(params: dict[str, float], data: object) -> float:
-            return float(-params["x"] ** 2)
+            return float(-(params["x"] ** 2))
 
         with pytest.raises(AttributeError):
             # This should fail since log_prob doesn't have Model attributes
@@ -58,10 +59,12 @@ class TestSample:
 
         result = mb.sample(model, num_samples=100, num_warmup=20, num_chains=1, seed=42)
 
-        assert result.samples["a"].shape == (100,)
-        assert result.samples["b"].shape == (100,)
-        assert result.samples_unconstrained["a"].shape == (100,)
-        assert result.samples_unconstrained["b"].shape == (100,)
+        # Always (num_chains, num_samples) for consistency
+        assert result.samples["a"].shape == (1, 100)
+        assert result.samples["b"].shape == (1, 100)
+        assert result.samples_unconstrained["a"].shape == (1, 100)
+        assert result.samples_unconstrained["b"].shape == (1, 100)
+        assert result.acceptance_rate.shape == (1,)
 
     def test_samples_shape_multiple_chains(self) -> None:
         """Test samples have correct shape for multiple chains."""
@@ -76,8 +79,8 @@ class TestSample:
         assert result.samples["b"].shape == (3, 100)
         assert result.num_chains == 3
 
-    def test_multiple_chains_acceptance_rate(self) -> None:
-        """Test acceptance rate is array for multiple chains."""
+    def test_acceptance_rate_shape(self) -> None:
+        """Test acceptance rate is always array with shape (num_chains,)."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
             likelihood=lambda p, d: 0.0,
@@ -170,7 +173,7 @@ class TestSample:
 
         # Unconstrained samples can be any real number
         # (they are log-transformed)
-        assert result.samples_unconstrained["sigma"].shape == (100,)
+        assert result.samples_unconstrained["sigma"].shape == (1, 100)
 
     def test_sampler_mh(self) -> None:
         """Test using basic MH sampler."""
@@ -189,7 +192,7 @@ class TestSample:
         )
 
         assert result.sampler == "mh"
-        assert len(result.samples["x"]) == 50
+        assert result.samples["x"].shape == (1, 50)
 
     def test_invalid_sampler_raises(self) -> None:
         """Test invalid sampler name raises error."""
@@ -198,7 +201,9 @@ class TestSample:
             likelihood=lambda p, d: 0.0,
         )
 
-        with pytest.raises(Exception):
+        from minibayes.exceptions import ModelSpecError
+
+        with pytest.raises(ModelSpecError):
             mb.sample(model, num_samples=10, sampler="invalid")
 
     def test_initial_values(self) -> None:
@@ -208,9 +213,7 @@ class TestSample:
             likelihood=lambda p, d: 0.0,
         )
 
-        result = mb.sample(
-            model, num_samples=10, num_warmup=5, initial={"x": 5.0}, seed=42
-        )
+        result = mb.sample(model, num_samples=10, num_warmup=5, initial={"x": 5.0}, seed=42)
 
         # First sample should be near initial value (after warmup it may have moved)
         assert result.num_samples == 10
@@ -225,3 +228,93 @@ class TestSample:
         result = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
 
         assert result.elapsed_time > 0
+
+
+class TestSampleProgress:
+    """Tests for progress bar functionality."""
+
+    def test_progress_false_no_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test progress=False produces no stderr output."""
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=lambda p, d: 0.0,
+        )
+
+        mb.sample(model, num_samples=10, num_warmup=5, progress=False, seed=42)
+
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+    def test_progress_true_produces_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test progress=True produces stderr output."""
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=lambda p, d: 0.0,
+        )
+
+        mb.sample(model, num_samples=10, num_warmup=5, progress=True, seed=42)
+
+        captured = capsys.readouterr()
+        assert "Warmup" in captured.err
+        assert "Sampling" in captured.err
+
+    def test_progress_multiple_chains(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test progress shows chain numbers."""
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=lambda p, d: 0.0,
+        )
+
+        mb.sample(model, num_samples=10, num_warmup=5, num_chains=2, progress=True, seed=42)
+
+        captured = capsys.readouterr()
+        assert "Chain 1/2" in captured.err
+        assert "Chain 2/2" in captured.err
+
+
+class TestSampleTimeout:
+    """Tests for timeout functionality."""
+
+    def test_timeout_none_no_error(self) -> None:
+        """Test timeout=None doesn't raise."""
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=lambda p, d: 0.0,
+        )
+
+        result = mb.sample(model, num_samples=10, num_warmup=5, timeout=None, seed=42)
+        assert result.num_samples == 10
+
+    def test_timeout_sufficient_no_error(self) -> None:
+        """Test large timeout doesn't raise."""
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=lambda p, d: 0.0,
+        )
+
+        result = mb.sample(model, num_samples=10, num_warmup=5, timeout=60.0, seed=42)
+        assert result.num_samples == 10
+
+    def test_timeout_exceeded_raises(self) -> None:
+        """Test timeout raises SamplingTimeoutError."""
+        import time as time_module
+
+        from minibayes.exceptions import SamplingTimeoutError
+
+        def slow_likelihood(p: dict[str, float], d: object) -> float:
+            time_module.sleep(0.05)  # 50ms per step
+            return 0.0
+
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            likelihood=slow_likelihood,
+        )
+
+        with pytest.raises(SamplingTimeoutError):
+            mb.sample(model, num_samples=100, num_warmup=50, timeout=0.1, seed=42)
+
+    def test_timeout_error_is_sampling_error(self) -> None:
+        """Test SamplingTimeoutError inherits from SamplingError."""
+        from minibayes.exceptions import SamplingError, SamplingTimeoutError
+
+        assert issubclass(SamplingTimeoutError, SamplingError)

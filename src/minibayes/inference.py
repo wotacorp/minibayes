@@ -6,12 +6,13 @@ from collections.abc import Callable
 import numpy as np
 from numpy.typing import NDArray
 
-from minibayes.exceptions import ModelSpecError, SamplingError
+from minibayes.exceptions import ModelSpecError, SamplingError, SamplingTimeoutError
 from minibayes.model import Model
 from minibayes.results import InferenceResult
 from minibayes.samplers import AdaptiveMetropolis, MetropolisHastings
 from minibayes.samplers.base import Sampler
 from minibayes.utils import ensure_rng
+from minibayes.utils.progress import ProgressBar
 
 # Sampler name to class mapping
 _SAMPLERS: dict[str, type[Sampler]] = {
@@ -62,17 +63,45 @@ def _run_chain(
     num_samples: int,
     rng: np.random.Generator,
     param_names: list[str],
+    chain_idx: int,
+    num_chains: int,
+    progress: bool,
+    timeout: float | None,
+    start_time: float,
 ) -> tuple[dict[str, list[float]], int]:
     """
     Run a single MCMC chain.
 
     Returns samples (unconstrained) and acceptance count.
+
+    Raises
+    ------
+    SamplingTimeoutError
+        If timeout is exceeded.
     """
     state: dict[str, float] = initial_state.copy()
 
+    # Timeout check interval (every 100 steps)
+    check_interval: int = 100
+
+    def check_timeout() -> None:
+        if timeout is not None:
+            elapsed: float = time.perf_counter() - start_time
+            if elapsed > timeout:
+                raise SamplingTimeoutError(f"Sampling timed out after {elapsed:.1f}s (timeout={timeout}s)")
+
     # Warmup phase
-    for step_num in range(num_warmup):
-        state, _ = sampler.warmup_step(state, log_prob_fn, rng, step_num)
+    chain_label: str = f"Chain {chain_idx + 1}/{num_chains}"
+    with ProgressBar(
+        num_warmup,
+        desc=f"{chain_label} [Warmup]  ",
+        disable=not progress,
+    ) as pbar:
+        for step_num in range(num_warmup):
+            state, _ = sampler.warmup_step(state, log_prob_fn, rng, step_num)
+            pbar.update()
+            if step_num % check_interval == 0:
+                check_timeout()
 
     # Post-warmup finalization (e.g., freeze adaptive samplers)
     sampler.post_warmup()
@@ -81,11 +110,19 @@ def _run_chain(
     samples: dict[str, list[float]] = {name: [] for name in param_names}
     accepts: int = 0
 
-    for _ in range(num_samples):
-        state, accepted = sampler.step(state, log_prob_fn, rng)
-        accepts += int(accepted)
-        for name in param_names:
-            samples[name].append(state[name])
+    with ProgressBar(
+        num_samples,
+        desc=f"{chain_label} [Sampling]",
+        disable=not progress,
+    ) as pbar:
+        for step_num in range(num_samples):
+            state, accepted = sampler.step(state, log_prob_fn, rng)
+            accepts += int(accepted)
+            for name in param_names:
+                samples[name].append(state[name])
+            pbar.update()
+            if step_num % check_interval == 0:
+                check_timeout()
 
     return samples, accepts
 
@@ -100,6 +137,8 @@ def sample(
     sampler: str = "adaptive_mh",
     sampler_kwargs: dict[str, object] | None = None,
     seed: int | None = None,
+    progress: bool = False,
+    timeout: float | None = None,
 ) -> InferenceResult:
     """
     Run MCMC sampling.
@@ -125,11 +164,24 @@ def sample(
         Additional arguments passed to sampler.
     seed : int, optional
         Random seed for reproducibility.
+    progress : bool
+        If True, display progress bars for warmup and sampling phases.
+        Default: False.
+    timeout : float, optional
+        Maximum time in seconds for sampling. If exceeded, raises
+        SamplingTimeoutError. Default: None (no timeout).
 
     Returns
     -------
     InferenceResult
         Container with samples and diagnostics.
+
+    Raises
+    ------
+    SamplingTimeoutError
+        If timeout is specified and exceeded.
+    ModelSpecError
+        If sampler name is invalid.
     """
     start_time: float = time.perf_counter()
 
@@ -174,6 +226,11 @@ def sample(
             num_samples,
             chain_rng,
             param_names,
+            chain_idx,
+            num_chains,
+            progress,
+            timeout,
+            start_time,
         )
 
         # Store results
@@ -181,13 +238,10 @@ def sample(
             all_samples_unc[name].append(chain_samples[name])
         acceptance_rates.append(accepts / num_samples)
 
-    # Convert to arrays
+    # Convert to arrays - always (num_chains, num_samples) for consistency
     samples_unconstrained: dict[str, NDArray[np.float64]] = {}
     for name in param_names:
         arr: NDArray[np.float64] = np.array(all_samples_unc[name], dtype=np.float64)
-        if num_chains == 1:
-            # Squeeze to 1D: (1, num_samples) -> (num_samples,)
-            arr = arr.squeeze(axis=0)
         samples_unconstrained[name] = arr
 
     # Transform to constrained space using inverse transform
@@ -199,8 +253,8 @@ def sample(
         constrained: NDArray[np.float64] = transform.inverse(unc_samples)
         samples_constrained[name] = constrained
 
-    # Build acceptance rate
-    acceptance_rate: float | NDArray[np.float64] = acceptance_rates[0] if num_chains == 1 else np.array(acceptance_rates, dtype=np.float64)
+    # Build acceptance rate - always array for consistency
+    acceptance_rate: NDArray[np.float64] = np.array(acceptance_rates, dtype=np.float64)
 
     elapsed_time: float = time.perf_counter() - start_time
 

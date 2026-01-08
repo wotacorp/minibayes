@@ -14,9 +14,10 @@ from minibayes.utils.export import load_npz, save_npz, to_json
 def _make_result() -> InferenceResult:
     """Create a sample InferenceResult for testing."""
     rng = np.random.default_rng(42)
+    # Always (num_chains, num_samples) shape
     samples: dict[str, NDArray[np.float64]] = {
-        "alpha": rng.standard_normal(100),
-        "beta": rng.standard_normal(100),
+        "alpha": rng.standard_normal((1, 100)),
+        "beta": rng.standard_normal((1, 100)),
     }
     samples_unconstrained: dict[str, NDArray[np.float64]] = {
         "alpha": samples["alpha"].copy(),
@@ -25,7 +26,7 @@ def _make_result() -> InferenceResult:
     return InferenceResult(
         samples=samples,
         samples_unconstrained=samples_unconstrained,
-        acceptance_rate=0.25,
+        acceptance_rate=np.array([0.25]),
         num_samples=100,
         num_warmup=50,
         num_chains=1,
@@ -74,12 +75,10 @@ class TestExport:
             assert loaded.num_chains == result.num_chains
             assert loaded.sampler == result.sampler
             assert loaded.elapsed_time == result.elapsed_time
-            assert loaded.acceptance_rate == result.acceptance_rate
+            np.testing.assert_array_almost_equal(loaded.acceptance_rate, result.acceptance_rate)
             assert set(loaded.samples.keys()) == set(result.samples.keys())
             for k in result.samples:
-                np.testing.assert_array_almost_equal(
-                    loaded.samples[k], result.samples[k]
-                )
+                np.testing.assert_array_almost_equal(loaded.samples[k], result.samples[k])
 
     def test_save_load_npz_multichain(self) -> None:
         """Test save/load NPZ preserves multi-chain data."""
@@ -92,9 +91,7 @@ class TestExport:
 
             assert loaded.num_chains == 4
             assert loaded.samples["alpha"].shape == (4, 100)
-            np.testing.assert_array_almost_equal(
-                loaded.acceptance_rate, result.acceptance_rate
-            )
+            np.testing.assert_array_almost_equal(loaded.acceptance_rate, result.acceptance_rate)
 
     def test_to_dict(self) -> None:
         """Test to_dict returns serializable dict."""
@@ -128,7 +125,7 @@ class TestExport:
             assert json_path.exists()
 
             # Verify JSON content
-            with open(json_path, "r") as f:
+            with open(json_path) as f:
                 data = json.load(f)
             assert data["num_samples"] == 100
 
