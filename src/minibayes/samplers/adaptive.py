@@ -201,3 +201,7 @@ class AdaptiveMetropolis(Sampler):
         """
         self._frozen = True
         self._sample_history = []
+
+    def post_warmup(self) -> None:
+        """Freeze adaptation after warmup completes."""
+        self.freeze()

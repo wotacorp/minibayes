@@ -33,6 +33,10 @@ class Uniform(Distribution):
     def support(self) -> Support:
         return Support.BOUNDED
 
+    @property
+    def mean(self) -> float:
+        return (self._low + self._high) / 2.0
+
     def __init__(self, low: float = 0.0, high: float = 1.0) -> None:
         if high <= low:
             raise ModelSpecError("high must be greater than low")

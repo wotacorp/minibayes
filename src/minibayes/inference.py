@@ -1,13 +1,97 @@
 """MCMC inference engine."""
 
+import time
 from collections.abc import Callable
 
+import numpy as np
+from numpy.typing import NDArray
+
+from minibayes.exceptions import ModelSpecError, SamplingError
 from minibayes.model import Model
 from minibayes.results import InferenceResult
+from minibayes.samplers import AdaptiveMetropolis, MetropolisHastings
+from minibayes.samplers.base import Sampler
+from minibayes.utils import ensure_rng
+
+# Sampler name to class mapping
+_SAMPLERS: dict[str, type[Sampler]] = {
+    "mh": MetropolisHastings,
+    "adaptive_mh": AdaptiveMetropolis,
+}
+
+
+def _get_initial_state(
+    model: Model,
+    initial: dict[str, float] | None,
+    data: object,
+    rng: np.random.Generator,
+) -> dict[str, float]:
+    """
+    Get initial state in unconstrained space.
+
+    Uses prior means if initial is None (deterministic, robust).
+    Falls back to sampling from prior if means give invalid log_prob.
+    """
+    if initial is None:
+        # Use prior means as default (deterministic, robust)
+        constrained: dict[str, float] = model.prior_means()
+        unconstrained: dict[str, float] = model.to_unconstrained(constrained)
+        lp: float = model.log_prob_unconstrained(unconstrained, data)
+        if np.isfinite(lp):
+            return unconstrained
+        # Fallback: sample from prior if means give -inf log_prob
+        max_attempts: int = 10
+        for _ in range(max_attempts):
+            constrained = model.sample_prior(rng)
+            unconstrained = model.to_unconstrained(constrained)
+            lp = model.log_prob_unconstrained(unconstrained, data)
+            if np.isfinite(lp):
+                return unconstrained
+        raise SamplingError(f"Could not find valid initial state after {max_attempts} attempts")
+    else:
+        # Validate and transform provided initial values
+        model.validate_params(initial)
+        return model.to_unconstrained(initial)
+
+
+def _run_chain(
+    sampler: Sampler,
+    initial_state: dict[str, float],
+    log_prob_fn: Callable[[dict[str, float]], float],
+    num_warmup: int,
+    num_samples: int,
+    rng: np.random.Generator,
+    param_names: list[str],
+) -> tuple[dict[str, list[float]], int]:
+    """
+    Run a single MCMC chain.
+
+    Returns samples (unconstrained) and acceptance count.
+    """
+    state: dict[str, float] = initial_state.copy()
+
+    # Warmup phase
+    for step_num in range(num_warmup):
+        state, _ = sampler.warmup_step(state, log_prob_fn, rng, step_num)
+
+    # Post-warmup finalization (e.g., freeze adaptive samplers)
+    sampler.post_warmup()
+
+    # Sampling phase
+    samples: dict[str, list[float]] = {name: [] for name in param_names}
+    accepts: int = 0
+
+    for _ in range(num_samples):
+        state, accepted = sampler.step(state, log_prob_fn, rng)
+        accepts += int(accepted)
+        for name in param_names:
+            samples[name].append(state[name])
+
+    return samples, accepts
 
 
 def sample(
-    model: Model | Callable[[dict[str, float], object], float],
+    model: Model,
     data: object = None,
     initial: dict[str, float] | None = None,
     num_samples: int = 1000,
@@ -22,14 +106,13 @@ def sample(
 
     Parameters
     ----------
-    model : Model or Callable
-        Either a Model instance, or a function with signature:
-        (params: dict[str, float], data: Any) -> float
+    model : Model
+        A Model instance with priors and likelihood.
     data : Any
         Observed data passed to likelihood.
     initial : dict, optional
-        Initial parameter values. If None, sampled from prior (Model)
-        or must be provided (Callable).
+        Initial parameter values (constrained space). If None, sampled
+        from prior.
     num_samples : int
         Number of samples to draw (post-warmup).
     num_warmup : int
@@ -48,4 +131,86 @@ def sample(
     InferenceResult
         Container with samples and diagnostics.
     """
-    raise NotImplementedError()
+    start_time: float = time.perf_counter()
+
+    # Validate sampler name
+    if sampler not in _SAMPLERS:
+        valid_samplers: str = ", ".join(_SAMPLERS.keys())
+        raise ModelSpecError(f"Unknown sampler '{sampler}'. Valid options: {valid_samplers}")
+
+    # Set up RNG
+    rng: np.random.Generator = ensure_rng(seed)
+
+    # Get parameter names from model
+    param_names: list[str] = model.param_names
+
+    # Build log_prob function
+    def log_prob_fn(p: dict[str, float]) -> float:
+        return model.log_prob_unconstrained(p, data)
+
+    # Create child RNGs for each chain
+    child_rngs: list[np.random.Generator] = list(rng.spawn(num_chains))
+
+    # Run chains
+    all_samples_unc: dict[str, list[list[float]]] = {name: [] for name in param_names}
+    acceptance_rates: list[float] = []
+
+    for chain_idx in range(num_chains):
+        chain_rng: np.random.Generator = child_rngs[chain_idx]
+
+        # Get initial state (sample fresh for each chain if not provided)
+        chain_initial: dict[str, float] = _get_initial_state(model, initial, data, chain_rng)
+
+        # Create fresh sampler instance for each chain
+        kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
+        sampler_instance: Sampler = _SAMPLERS[sampler](**kwargs)
+
+        # Run chain
+        chain_samples, accepts = _run_chain(
+            sampler_instance,
+            chain_initial,
+            log_prob_fn,
+            num_warmup,
+            num_samples,
+            chain_rng,
+            param_names,
+        )
+
+        # Store results
+        for name in param_names:
+            all_samples_unc[name].append(chain_samples[name])
+        acceptance_rates.append(accepts / num_samples)
+
+    # Convert to arrays
+    samples_unconstrained: dict[str, NDArray[np.float64]] = {}
+    for name in param_names:
+        arr: NDArray[np.float64] = np.array(all_samples_unc[name], dtype=np.float64)
+        if num_chains == 1:
+            # Squeeze to 1D: (1, num_samples) -> (num_samples,)
+            arr = arr.squeeze(axis=0)
+        samples_unconstrained[name] = arr
+
+    # Transform to constrained space using inverse transform
+    samples_constrained: dict[str, NDArray[np.float64]] = {}
+    for name in param_names:
+        unc_samples: NDArray[np.float64] = samples_unconstrained[name]
+        transform = model.transforms[name]
+        # Apply inverse transform to the entire array
+        constrained: NDArray[np.float64] = transform.inverse(unc_samples)
+        samples_constrained[name] = constrained
+
+    # Build acceptance rate
+    acceptance_rate: float | NDArray[np.float64] = acceptance_rates[0] if num_chains == 1 else np.array(acceptance_rates, dtype=np.float64)
+
+    elapsed_time: float = time.perf_counter() - start_time
+
+    return InferenceResult(
+        samples=samples_constrained,
+        samples_unconstrained=samples_unconstrained,
+        acceptance_rate=acceptance_rate,
+        num_samples=num_samples,
+        num_warmup=num_warmup,
+        num_chains=num_chains,
+        sampler=sampler,
+        elapsed_time=elapsed_time,
+    )

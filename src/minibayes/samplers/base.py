@@ -65,3 +65,11 @@ class Sampler(ABC):
         accepted : bool
             Whether proposal was accepted.
         """
+
+    def post_warmup(self) -> None:  # noqa: B027
+        """
+        Called after warmup completes.
+
+        Override in subclasses to perform cleanup or finalization,
+        such as freezing adaptation or releasing memory.
+        """

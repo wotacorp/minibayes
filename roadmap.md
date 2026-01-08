@@ -288,13 +288,13 @@ def save_json(result: InferenceResult, path: str): ...
 
 ---
 
-### Block 12: `__init__.py` — Entry Point (~100 lines)
+### Block 12: `inference.py` — Entry Point (~100 lines)
 
 **Purpose:** Main API, orchestrates everything.
 
 ```python
 def sample(
-    model: Model | Callable,
+    model: Model,
     data = None,
     initial: dict | None = None,
     num_samples: int = 1000,
@@ -304,7 +304,17 @@ def sample(
     sampler_kwargs: dict | None = None,
     seed: int | None = None,
 ) -> InferenceResult:
-    ...
+    """
+    1. Validate inputs (sampler name)
+    2. Set up RNG, spawn child RNGs for chains
+    3. For each chain:
+       - Get initial state (sample from prior if None)
+       - Warmup phase (sampler.warmup_step)
+       - Call sampler.post_warmup()
+       - Sampling phase (sampler.step)
+    4. Transform samples to constrained space
+    5. Return InferenceResult
+    """
 ```
 
 ---
@@ -319,7 +329,7 @@ def sample(
 | samplers/mh | Integration | Normal-Normal posterior recovery |
 | samplers/adaptive | Integration | Correlated posterior recovery |
 | diagnostics | Unit | ESS < n for correlated, R-hat formulas |
-| mb.sample | End-to-end | Linear regression recovers true params |
+| mb.sample | End-to-end | Model-based sampling, reproducibility, multi-chain |
 
 ---
 

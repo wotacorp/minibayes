@@ -46,6 +46,11 @@ class TestNormal:
         with pytest.raises(ModelSpecError):
             dist.Normal(loc=0.0, scale=-1.0)
 
+    def test_mean(self) -> None:
+        """Mean equals loc parameter."""
+        d = dist.Normal(loc=2.5, scale=3.0)
+        assert d.mean == 2.5
+
 
 class TestHalfNormal:
     """Tests for HalfNormal distribution."""
@@ -76,6 +81,13 @@ class TestHalfNormal:
         """Support is POSITIVE."""
         d = dist.HalfNormal(scale=1.0)
         assert d.support == Support.POSITIVE
+
+    def test_mean(self) -> None:
+        """Mean equals scale * sqrt(2/pi)."""
+        scale = 2.0
+        d = dist.HalfNormal(scale=scale)
+        expected = scale * np.sqrt(2.0 / np.pi)
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
 
 
 class TestExponential:
@@ -109,6 +121,13 @@ class TestExponential:
         d = dist.Exponential(rate=1.0)
         assert d.support == Support.POSITIVE
 
+    def test_mean(self) -> None:
+        """Mean equals 1/rate."""
+        rate = 2.0
+        d = dist.Exponential(rate=rate)
+        expected = 1.0 / rate
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
+
 
 class TestGamma:
     """Tests for Gamma distribution."""
@@ -140,6 +159,13 @@ class TestGamma:
         """Support is POSITIVE."""
         d = dist.Gamma(shape=2.0, rate=1.0)
         assert d.support == Support.POSITIVE
+
+    def test_mean(self) -> None:
+        """Mean equals shape/rate."""
+        shape, rate = 3.0, 2.0
+        d = dist.Gamma(shape=shape, rate=rate)
+        expected = shape / rate
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
 
 
 class TestBeta:
@@ -174,6 +200,13 @@ class TestBeta:
         """Support is UNIT."""
         d = dist.Beta(alpha=2.0, beta=2.0)
         assert d.support == Support.UNIT
+
+    def test_mean(self) -> None:
+        """Mean equals alpha/(alpha+beta)."""
+        alpha, beta_param = 2.0, 5.0
+        d = dist.Beta(alpha=alpha, beta=beta_param)
+        expected = alpha / (alpha + beta_param)
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
 
 
 class TestUniform:
@@ -223,3 +256,10 @@ class TestUniform:
         assert isinstance(transform, AffineTransform)
         assert transform.low == 2.0
         assert transform.high == 5.0
+
+    def test_mean(self) -> None:
+        """Mean equals (low+high)/2."""
+        low, high = 2.0, 8.0
+        d = dist.Uniform(low=low, high=high)
+        expected = (low + high) / 2.0
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)

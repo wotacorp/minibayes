@@ -34,6 +34,10 @@ class HalfNormal(Distribution):
     def support(self) -> Support:
         return Support.POSITIVE
 
+    @property
+    def mean(self) -> float:
+        return self._scale * float(np.sqrt(2.0 / np.pi))
+
     def __init__(self, scale: float = 1.0) -> None:
         if scale <= 0:
             raise ModelSpecError("scale must be positive")

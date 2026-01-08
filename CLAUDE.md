@@ -165,8 +165,8 @@ Before committing:
 | `samplers/adaptive.py` | ✓ Done | AdaptiveMetropolis with covariance tuning |
 | `results.py` | ✓ Done | summary, to_dict, save/load methods |
 | **v0.3 Interface** | | |
-| `inference.py` | ✗ Skeleton | `sample()` entry point not implemented |
+| `inference.py` | ✓ Done | `sample()` entry point with Model support |
 | `diagnostics.py` | ✓ Done | ESS (FFT-based), R-hat, summary |
 | `utils/export.py` | ✓ Done | save_npz, load_npz, to_json |
 
-**Next steps:** Implement `inference.py` sample() function.
+**v0.3 complete.** Next: v0.4 (HMC sampler, Numba JIT).
