@@ -31,6 +31,11 @@ dev = [
     "isort>=5.13.0",
     "scipy>=1.11.0",
 ]
+notebooks = [
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "jupyter>=1.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/theoradusz/minibayes"
