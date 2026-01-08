@@ -26,7 +26,7 @@
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   model.py ◄──────── distributions + transforms                         │
-│   (Model class: priors, likelihood, log_prob, transforms)               │
+│   (Model class: priors, log_likelihood, log_prob, transforms)           │
 │                      │                                                  │
 │                      ▼                                                  │
 │   samplers/base.py ──► samplers/mh.py ──► samplers/adaptive.py          │
@@ -150,11 +150,11 @@ class Distribution(ABC):
 
 ### Block 5: `model.py` (~120 lines)
 
-**Purpose:** Combine priors + likelihood, handle transforms automatically.
+**Purpose:** Combine priors + log-likelihood, handle transforms automatically.
 
 ```python
 class Model:
-    def __init__(self, priors: dict[str, Distribution], likelihood: Callable): ...
+    def __init__(self, priors: dict[str, Distribution], log_likelihood: Callable): ...
 
     @property
     def param_names(self) -> list[str]: ...

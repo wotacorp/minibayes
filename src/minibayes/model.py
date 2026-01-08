@@ -13,7 +13,7 @@ from minibayes.utils import ensure_rng
 
 class Model:
     """
-    A Bayesian model with explicit priors and likelihood.
+    A Bayesian model with explicit priors and log-likelihood.
 
     Priors are assumed independent (no hierarchical structure).
     Transforms are derived automatically from distribution support.
@@ -22,20 +22,20 @@ class Model:
     ----------
     priors : dict[str, Distribution]
         Prior distributions for each parameter.
-    likelihood : Callable[[dict, object], float]
-        Function (params, data) -> log_likelihood.
+    log_likelihood : Callable[[dict, object], float]
+        Function (params, data) -> log_likelihood value.
     """
 
     def __init__(
         self,
         priors: dict[str, Distribution],
-        likelihood: Callable[[dict[str, float], object], float],
+        log_likelihood: Callable[[dict[str, float], object], float],
     ) -> None:
         if not priors:
             raise ModelSpecError("priors must be non-empty")
 
         self._priors = priors
-        self._likelihood = likelihood
+        self._log_likelihood_fn = log_likelihood
         self._param_names = list(priors.keys())
 
         # Build transforms from distribution support
@@ -115,7 +115,7 @@ class Model:
         float
             Log likelihood value.
         """
-        return self._likelihood(params, data)
+        return self._log_likelihood_fn(params, data)
 
     def log_prob(self, params: dict[str, float], data: object) -> float:
         """

@@ -22,7 +22,7 @@ from minibayes import dist
 # Define model
 model = mb.Model(
     priors={"mu": dist.Normal(0, 10), "sigma": dist.HalfNormal(5)},
-    likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], p["sigma"]).log_prob(d))),
+    log_likelihood=lambda p, d: dist.Normal(p["mu"], p["sigma"]).obs_logp(d),
 )
 
 # Run inference
@@ -35,12 +35,12 @@ result.save("posterior.npz")
 
 ## Model Class
 
-The structured way to define Bayesian models. Priors and likelihood are specified separately.
+The structured way to define Bayesian models. Priors and log-likelihood are specified separately.
 
 ```python
 model = mb.Model(
     priors={"mu": dist.Normal(0, 10), "sigma": dist.HalfNormal(5)},
-    likelihood=lambda params, data: dist.Normal(params["mu"], params["sigma"]).log_prob(data).sum(),
+    log_likelihood=lambda params, data: dist.Normal(params["mu"], params["sigma"]).obs_logp(data),
 )
 
 # Inspect (no magic - everything is explicit)
@@ -78,6 +78,27 @@ Transforms are derived from distribution support:
 | BOUNDED | (a, b) | AffineTransform | Uniform |
 
 MCMC samplers work in unconstrained space. The `log_prob_unconstrained()` method includes the Jacobian correction automatically.
+
+### Distribution Methods
+
+All distributions provide these methods:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `log_prob(x)` | array or float | Element-wise log probability density |
+| `obs_logp(data)` | float | Sum of log_prob (for observed data) |
+| `sample(size, rng)` | array or float | Random samples |
+| `mean` | float | Mean (expected value) |
+
+The `obs_logp()` method simplifies likelihood functions:
+
+```python
+# Before (verbose)
+return float(np.sum(dist.Normal(mu, sigma).log_prob(y)))
+
+# After (cleaner)
+return dist.Normal(mu, sigma).obs_logp(y)
+```
 
 ## The sample() Function
 
