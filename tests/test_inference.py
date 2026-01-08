@@ -237,7 +237,7 @@ class TestSampleProgress:
         """Test progress=False produces no stderr output."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, progress=False, seed=42)
@@ -249,7 +249,7 @@ class TestSampleProgress:
         """Test progress=True produces stderr output."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, progress=True, seed=42)
@@ -262,7 +262,7 @@ class TestSampleProgress:
         """Test progress shows chain numbers."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, num_chains=2, progress=True, seed=42)
@@ -279,7 +279,7 @@ class TestSampleTimeout:
         """Test timeout=None doesn't raise."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=10, num_warmup=5, timeout=None, seed=42)
@@ -289,7 +289,7 @@ class TestSampleTimeout:
         """Test large timeout doesn't raise."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=10, num_warmup=5, timeout=60.0, seed=42)
@@ -307,7 +307,7 @@ class TestSampleTimeout:
 
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=slow_likelihood,
+            log_likelihood=slow_likelihood,
         )
 
         with pytest.raises(SamplingTimeoutError):
