@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import ArrayLike
 
 
 @dataclass
@@ -73,6 +79,39 @@ class InferenceResult:
             filtered = self.samples
 
         return compute_summary(filtered, percentiles)
+
+    def predict(
+        self,
+        predictive_fn: Callable[
+            [dict[str, float], np.random.Generator], dict[str, ArrayLike]
+        ],
+        num_samples: int | None = None,
+        seed: int | None = None,
+    ) -> dict[str, NDArray[np.float64]]:
+        """
+        Generate posterior predictive samples (convenience wrapper).
+
+        Parameters
+        ----------
+        predictive_fn : Callable[[dict[str, float], Generator], dict[str, ArrayLike]]
+            Function (params, rng) -> predictions.
+        num_samples : int, optional
+            Number of posterior samples to use.
+        seed : int, optional
+            Random seed for reproducibility.
+
+        Returns
+        -------
+        dict[str, NDArray[np.float64]]
+            Predictions with shape (num_samples, *prediction_shape).
+
+        See Also
+        --------
+        sample_posterior_predictive : Full documentation.
+        """
+        from minibayes.predictive import sample_posterior_predictive
+
+        return sample_posterior_predictive(self, predictive_fn, num_samples, seed)
 
     def to_dict(self) -> dict[str, object]:
         """
