@@ -48,6 +48,18 @@ class Distribution(ABC):
             The support enum value.
         """
 
+    @property
+    @abstractmethod
+    def mean(self) -> float:
+        """
+        Return the mean (expected value) of the distribution.
+
+        Returns
+        -------
+        float
+            The mean of the distribution.
+        """
+
     @abstractmethod
     def log_prob(self, x: NDArray[np.float64] | float) -> NDArray[np.float64] | float:
         """

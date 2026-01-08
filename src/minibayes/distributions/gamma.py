@@ -37,6 +37,10 @@ class Gamma(Distribution):
     def support(self) -> Support:
         return Support.POSITIVE
 
+    @property
+    def mean(self) -> float:
+        return self._shape / self._rate
+
     def __init__(self, shape: float = 1.0, rate: float = 1.0) -> None:
         if shape <= 0:
             raise ModelSpecError("shape must be positive")

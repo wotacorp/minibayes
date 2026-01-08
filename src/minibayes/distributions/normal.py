@@ -35,6 +35,10 @@ class Normal(Distribution):
     def support(self) -> Support:
         return Support.REAL
 
+    @property
+    def mean(self) -> float:
+        return self._loc
+
     def __init__(self, loc: float = 0.0, scale: float = 1.0) -> None:
         if scale <= 0:
             raise ModelSpecError("scale must be positive")

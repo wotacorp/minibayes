@@ -57,6 +57,7 @@ model.log_prob({"mu": 0, "sigma": 1}, data)  # float
 | `param_names` | List of parameter names in fixed order |
 | `transforms` | Dict of transforms derived from distribution support |
 | `sample_prior(rng)` | Draw one sample from the joint prior |
+| `prior_means()` | Return mean of each prior distribution |
 | `log_prior(params)` | Sum of log_prob for each prior |
 | `log_likelihood(params, data)` | User-provided likelihood function |
 | `log_prob(params, data)` | log_prior + log_likelihood (unnormalized posterior) |
@@ -86,7 +87,7 @@ The main entry point for inference.
 result = mb.sample(
     model,                    # Model instance
     data=y,                   # Observed data passed to likelihood
-    initial=None,             # Initial params (optional, samples from prior if None)
+    initial=None,             # Initial params (optional, uses prior means if None)
     num_samples=1000,         # Samples to draw (post-warmup)
     num_warmup=500,           # Warmup samples (discarded, used for adaptation)
     num_chains=1,             # Number of independent chains
@@ -101,13 +102,28 @@ result = mb.sample(
 1. **Validate inputs**: Check sampler name is valid ("mh" or "adaptive_mh")
 2. **Set up RNG**: Create random generator from seed, spawn child RNGs for each chain
 3. **For each chain**:
-   - Get initial state (sample from prior if not provided, transform to unconstrained)
+   - Get initial state (use prior means if not provided, transform to unconstrained)
    - Create fresh sampler instance
    - **Warmup phase**: Run `num_warmup` steps with `sampler.warmup_step()` (adapts proposal)
    - **Finalize**: Call `sampler.post_warmup()` (freezes adaptation, frees memory)
    - **Sampling phase**: Run `num_samples` steps with `sampler.step()`, store samples
 4. **Transform samples**: Convert unconstrained samples back to constrained space
 5. **Return InferenceResult**: Package samples, acceptance rates, timing
+
+### Default Initialization
+
+When `initial=None`, the sampler uses prior means as the starting point:
+
+| Distribution | Mean |
+|--------------|------|
+| Normal(μ, σ) | μ |
+| HalfNormal(σ) | σ√(2/π) |
+| Exponential(λ) | 1/λ |
+| Gamma(α, β) | α/β |
+| Beta(α, β) | α/(α+β) |
+| Uniform(a, b) | (a+b)/2 |
+
+This provides deterministic, robust initialization without needing manual tuning. If prior means yield invalid log_prob (rare), sampling falls back to random prior draws.
 
 ### Sampler Options
 

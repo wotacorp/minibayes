@@ -36,6 +36,10 @@ class Beta(Distribution):
     def support(self) -> Support:
         return Support.UNIT
 
+    @property
+    def mean(self) -> float:
+        return self._alpha / (self._alpha + self._beta)
+
     def __init__(self, alpha: float = 1.0, beta: float = 1.0) -> None:
         if alpha <= 0:
             raise ModelSpecError("alpha must be positive")

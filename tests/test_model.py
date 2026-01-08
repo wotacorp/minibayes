@@ -64,6 +64,21 @@ class TestModel:
         assert np.isfinite(sample["sigma"])
         assert sample["sigma"] > 0  # HalfNormal is positive
 
+    def test_prior_means(self) -> None:
+        """Test prior_means returns mean of each prior."""
+        priors = {
+            "mu": dist.Normal(loc=5.0, scale=2.0),
+            "sigma": dist.HalfNormal(scale=3.0),
+            "p": dist.Beta(alpha=2.0, beta=3.0),
+        }
+        model = Model(priors=priors, likelihood=simple_likelihood)
+        means = model.prior_means()
+
+        assert set(means.keys()) == {"mu", "sigma", "p"}
+        np.testing.assert_allclose(means["mu"], 5.0, rtol=1e-10)
+        np.testing.assert_allclose(means["sigma"], 3.0 * np.sqrt(2 / np.pi), rtol=1e-10)
+        np.testing.assert_allclose(means["p"], 2.0 / 5.0, rtol=1e-10)
+
     def test_log_prior(self) -> None:
         """Test log_prior computes sum of prior log_probs."""
         priors = {

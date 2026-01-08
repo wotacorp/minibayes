@@ -33,6 +33,10 @@ class Exponential(Distribution):
     def support(self) -> Support:
         return Support.POSITIVE
 
+    @property
+    def mean(self) -> float:
+        return 1.0 / self._rate
+
     def __init__(self, rate: float = 1.0) -> None:
         if rate <= 0:
             raise ModelSpecError("rate must be positive")

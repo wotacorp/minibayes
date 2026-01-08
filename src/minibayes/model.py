@@ -68,6 +68,17 @@ class Model:
             result[name] = float(sample_val)
         return result
 
+    def prior_means(self) -> dict[str, float]:
+        """
+        Return the mean of each prior distribution.
+
+        Returns
+        -------
+        dict[str, float]
+            Mean value for each parameter.
+        """
+        return {name: self._priors[name].mean for name in self._param_names}
+
     def log_prior(self, params: dict[str, float]) -> float:
         """
         Compute log prior probability.

@@ -29,15 +29,22 @@ def _get_initial_state(
     """
     Get initial state in unconstrained space.
 
-    Samples from prior if initial is None, transforms to unconstrained.
+    Uses prior means if initial is None (deterministic, robust).
+    Falls back to sampling from prior if means give invalid log_prob.
     """
     if initial is None:
-        # Sample from prior, retrying if log_prob is not finite
+        # Use prior means as default (deterministic, robust)
+        constrained: dict[str, float] = model.prior_means()
+        unconstrained: dict[str, float] = model.to_unconstrained(constrained)
+        lp: float = model.log_prob_unconstrained(unconstrained, data)
+        if np.isfinite(lp):
+            return unconstrained
+        # Fallback: sample from prior if means give -inf log_prob
         max_attempts: int = 10
         for _ in range(max_attempts):
-            constrained: dict[str, float] = model.sample_prior(rng)
-            unconstrained: dict[str, float] = model.to_unconstrained(constrained)
-            lp: float = model.log_prob_unconstrained(unconstrained, data)
+            constrained = model.sample_prior(rng)
+            unconstrained = model.to_unconstrained(constrained)
+            lp = model.log_prob_unconstrained(unconstrained, data)
             if np.isfinite(lp):
                 return unconstrained
         raise SamplingError(f"Could not find valid initial state after {max_attempts} attempts")
