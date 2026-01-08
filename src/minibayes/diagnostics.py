@@ -151,16 +151,15 @@ def summary(
     Parameters
     ----------
     samples : dict[str, ndarray]
-        Samples for each parameter. Shape can be (num_samples,) for
-        single chain or (num_chains, num_samples) for multiple chains.
+        Samples for each parameter. Shape: (num_chains, num_samples).
     percentiles : list[int], optional
         Percentiles to compute. Default: [5, 50, 95].
 
     Returns
     -------
     dict[str, dict[str, float]]
-        Summary with keys: mean, std, percentiles, ess, and r_hat
-        (if multiple chains) per parameter.
+        Summary with keys: mean, std, percentiles, ess, r_hat per parameter.
+        r_hat is NaN for single chain.
     """
     if percentiles is None:
         percentiles = [5, 50, 95]
@@ -168,6 +167,10 @@ def summary(
     result: dict[str, dict[str, float]] = {}
 
     for name, arr in samples.items():
+        # Ensure 2D: (num_chains, num_samples)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+
         flat: NDArray[np.float64] = arr.flatten()
 
         stats: dict[str, float] = {
@@ -180,20 +183,17 @@ def summary(
             key: str = f"{p}%"
             stats[key] = cast("float", np.percentile(flat, p))
 
-        # ESS and R-hat
-        if arr.ndim == 2:
-            # Multiple chains: compute ESS per chain, average
-            num_chains: int = arr.shape[0]
-            ess_values: list[float] = []
-            for i in range(num_chains):
-                chain_samples: NDArray[np.float64] = arr[i, :]
-                ess_values.append(effective_sample_size(chain_samples))
-            ess_arr: NDArray[np.float64] = np.asarray(ess_values, dtype=np.float64)
-            stats["ess"] = cast("float", np.mean(ess_arr))
-            stats["r_hat"] = r_hat(arr)
-        else:
-            # Single chain: compute ESS, no R-hat
-            stats["ess"] = effective_sample_size(arr)
+        # ESS: compute per chain, average
+        num_chains: int = arr.shape[0]
+        ess_values: list[float] = []
+        for i in range(num_chains):
+            chain_samples: NDArray[np.float64] = arr[i, :]
+            ess_values.append(effective_sample_size(chain_samples))
+        ess_arr: NDArray[np.float64] = np.asarray(ess_values, dtype=np.float64)
+        stats["ess"] = cast("float", np.mean(ess_arr))
+
+        # R-hat: always include (NaN for single chain)
+        stats["r_hat"] = r_hat(arr)
 
         result[name] = stats
 
