@@ -62,7 +62,56 @@ Diagnosing problems:
 
 Rule of thumb: adjust `proposal_scale` until acceptance is in the target range.
 
-## Usage
+## Adaptive Metropolis
+
+Adapts the proposal covariance during warmup using the algorithm of Haario et al. (2001).
+
+### How It Works
+
+1. **During warmup**: Accumulates samples and periodically updates proposal covariance
+2. **Optimal scaling**: Uses `Σ = (2.38²/d) × Σ_empirical + ε×I` (optimal for Gaussian targets)
+3. **After warmup**: Freezes covariance and frees memory
+
+The 2.38²/d scaling factor was proven optimal by Roberts & Rosenthal (2001), achieving ~23% acceptance rate for Gaussian targets.
+
+### Usage
+
+```python
+import numpy as np
+from minibayes.samplers import AdaptiveMetropolis
+
+sampler = AdaptiveMetropolis(initial_scale=1.0, target_acceptance=0.234)
+
+# Define log probability
+def log_prob(params: dict[str, float]) -> float:
+    return -0.5 * (params["x"]**2 + params["y"]**2)
+
+rng = np.random.default_rng(42)
+state = {"x": 0.0, "y": 0.0}
+
+# Warmup (adaptation happens here)
+for i in range(1000):
+    state, _ = sampler.warmup_step(state, log_prob, rng, step_num=i)
+
+sampler.freeze()  # Stop adaptation, free memory
+
+# Sampling (fixed covariance)
+samples = []
+for _ in range(5000):
+    state, _ = sampler.step(state, log_prob, rng)
+    samples.append(state.copy())
+```
+
+### When to Use
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Known parameter scales | Use `MetropolisHastings` with tuned scales |
+| Unknown scales | Use `AdaptiveMetropolis` |
+| Correlated parameters | Use `AdaptiveMetropolis` (learns correlations) |
+| Single parameter | Either works; MH is simpler |
+
+## MetropolisHastings Usage
 
 ```python
 import numpy as np
@@ -124,3 +173,5 @@ Key points:
 - [Stan User's Guide: MCMC Sampling](https://mc-stan.org/docs/stan-users-guide/mcmc.html)
 - [PyMC Step Methods](https://www.pymc.io/projects/docs/en/latest/api/samplers.html)
 - Roberts, Gelman & Gilks (1997). "Weak convergence and optimal scaling of random walk Metropolis algorithms"
+- [Haario et al. (2001). "An adaptive Metropolis algorithm"](https://projecteuclid.org/journals/bernoulli/volume-7/issue-2/An-adaptive-Metropolis-algorithm/bj/1080222083.full)
+- Roberts & Rosenthal (2001). "Optimal scaling for various Metropolis-Hastings algorithms"

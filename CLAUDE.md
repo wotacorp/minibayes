@@ -157,11 +157,11 @@ Before committing:
 | **v0.2 Core** | | |
 | `model.py` | ✓ Done | Model class with transforms, Jacobian |
 | `samplers/mh.py` | ✓ Done | MetropolisHastings with Gaussian proposals |
-| `samplers/adaptive.py` | ✗ Skeleton | AdaptiveMetropolis not implemented |
+| `samplers/adaptive.py` | ✓ Done | AdaptiveMetropolis with covariance tuning |
 | `results.py` | ◐ Partial | Dataclass done; methods skeleton |
 | **v0.3 Interface** | | |
 | `inference.py` | ✗ Skeleton | `sample()` entry point not implemented |
 | `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
 | `utils/export.py` | ✗ Skeleton | save/load not implemented |
 
-**Next steps:** Implement Adaptive MH sampler.
+**Next steps:** Implement `inference.py` sample() function.
