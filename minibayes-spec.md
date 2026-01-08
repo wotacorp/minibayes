@@ -78,16 +78,18 @@ minibayes/
 
 ## Core Concepts
 
-### The Two APIs
+### Model API
 
-minibayes provides two ways to specify models:
+minibayes uses a `Model` class to specify Bayesian models with priors and likelihood:
 
-| API | Use Case | Transforms | Verbosity |
-|-----|----------|------------|-----------|
-| **Direct `log_prob`** | Full control, complex models | Manual | High |
-| **`Model` class** | Standard models, automatic transforms | Automatic | Low |
+| Feature | Description |
+|---------|-------------|
+| Automatic transforms | Derived from distribution support |
+| Jacobian correction | Handled automatically in `log_prob_unconstrained()` |
+| Prior sampling | `sample_prior()` draws from joint prior |
+| Explicit methods | No context-dependent magic |
 
-Both APIs feed into the same samplers. The `Model` class is syntactic sugar that generates a `log_prob` function internally.
+For full control, users can access `model.log_prob_unconstrained()` directly or build custom samplers.
 
 ### No Context-Dependent Magic
 
@@ -116,11 +118,11 @@ Each operation is a separate, explicit method call. No surprises.
 
 #### `mb.sample()`
 
-The main inference entry point. Accepts either a `Model` or a raw `log_prob` function.
+The main inference entry point. Accepts a `Model` instance.
 
 ```python
 def sample(
-    model: Model | Callable,
+    model: Model,
     data: Any = None,
     initial: dict[str, float] | None = None,
     num_samples: int = 1000,
@@ -135,14 +137,12 @@ def sample(
 
     Parameters
     ----------
-    model : Model or Callable
-        Either a Model instance, or a function with signature:
-        (params: dict[str, float], data: Any) -> float
+    model : Model
+        A Model instance with priors and likelihood.
     data : Any
         Observed data passed to likelihood
     initial : dict, optional
-        Initial parameter values. If None, sampled from prior (Model)
-        or must be provided (Callable).
+        Initial parameter values (constrained space). If None, sampled from prior.
     num_samples : int
         Number of samples to draw (post-warmup)
     num_warmup : int
@@ -407,43 +407,28 @@ result.summary()
 result.save("linear_regression_posterior.npz")
 ```
 
-#### Using Direct log_prob (Full Control)
+#### Direct Access for Power Users
+
+For full control, users can access internal methods directly:
 
 ```python
-import minibayes as mb
-from minibayes import dist
-import numpy as np
+# Access log_prob in unconstrained space (what samplers use internally)
+unconstrained = model.to_unconstrained(params)
+lp = model.log_prob_unconstrained(unconstrained, data)
 
-def log_prob(params, data):
-    X, y = data
+# Or build a custom sampling loop
+from minibayes.samplers import MetropolisHastings
 
-    # Unpack (note: we work in unconstrained space)
-    alpha = params["alpha"]
-    beta = np.array([params["beta_1"], params["beta_2"], params["beta_3"]])
-    log_sigma = params["log_sigma"]  # Unconstrained!
-    sigma = np.exp(log_sigma)
+sampler = MetropolisHastings(proposal_scale=0.5)
+rng = np.random.default_rng(42)
+state = model.to_unconstrained(model.sample_prior(rng))
 
-    # Priors
-    lp = dist.Normal(0, 10).log_prob(alpha)
-    lp += dist.Normal(0, 5).log_prob(beta).sum()
-    lp += dist.HalfNormal(5).log_prob(sigma)
-    lp += log_sigma  # Jacobian correction for log transform
-
-    # Likelihood
-    mu = alpha + X @ beta
-    lp += dist.Normal(mu, sigma).log_prob(y).sum()
-
-    return lp
-
-result = mb.sample(
-    model=log_prob,
-    data=(X, y),
-    initial={"alpha": 0.0, "beta_1": 0.0, "beta_2": 0.0, "beta_3": 0.0, "log_sigma": 0.0},
-    num_samples=5000,
-)
-
-# Note: samples["log_sigma"] is in unconstrained space
-# User must transform back: sigma = np.exp(result.samples["log_sigma"])
+for _ in range(1000):
+    state, accepted = sampler.step(
+        state,
+        lambda p: model.log_prob_unconstrained(p, data),
+        rng
+    )
 ```
 
 ---
