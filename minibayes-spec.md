@@ -101,7 +101,7 @@ def model():
     x = numpyro.sample("x", dist.Normal(0, 1))  # Magic!
 
 # minibayes: explicit methods for each operation
-model = mb.Model(priors={"x": dist.Normal(0, 1)}, likelihood=...)
+model = mb.Model(priors={"x": dist.Normal(0, 1)}, log_likelihood=...)
 
 model.sample_prior()      # Draw from prior
 model.log_prior(params)   # Compute log prior
@@ -181,14 +181,14 @@ class Model:
     ----------
     priors : dict[str, Distribution]
         Prior distributions for each parameter.
-    likelihood : Callable[[dict, Any], float]
-        Function (params, data) -> log_likelihood
+    log_likelihood : Callable[[dict, Any], float]
+        Function (params, data) -> log_likelihood value
     """
 
     def __init__(
         self,
         priors: dict[str, Distribution],
-        likelihood: Callable[[dict[str, float], Any], float],
+        log_likelihood: Callable[[dict[str, float], Any], float],
     ): ...
 
     # -------------------------------------------------------------------------
@@ -363,10 +363,10 @@ true_sigma = 0.8
 y = true_alpha + X @ true_beta + np.random.normal(0, true_sigma, size=100)
 
 # Define model
-def likelihood(params, data):
+def log_likelihood(params, data):
     X, y = data
     mu = params["alpha"] + X @ np.array([params["beta_1"], params["beta_2"], params["beta_3"]])
-    return dist.Normal(mu, params["sigma"]).log_prob(y).sum()
+    return dist.Normal(mu, params["sigma"]).obs_logp(y)
 
 model = mb.Model(
     priors={
@@ -376,7 +376,7 @@ model = mb.Model(
         "beta_3": dist.Normal(0, 5),
         "sigma": dist.HalfNormal(5),
     },
-    likelihood=likelihood,
+    log_likelihood=log_likelihood,
 )
 
 # Inspect model (no magic — everything is explicit)

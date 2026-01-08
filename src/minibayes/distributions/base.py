@@ -98,6 +98,28 @@ class Distribution(ABC):
             Random sample(s).
         """
 
+    def obs_logp(self, data: NDArray[np.float64] | float) -> float:
+        """
+        Compute total log probability for observed data.
+
+        Equivalent to float(np.sum(self.log_prob(data))).
+
+        Parameters
+        ----------
+        data : ndarray or float
+            Observed data points.
+
+        Returns
+        -------
+        float
+            Sum of log probabilities.
+        """
+        lp: NDArray[np.float64] | float = self.log_prob(data)
+        if isinstance(lp, float):
+            return lp
+        lp_sum: float = float(np.sum(lp))
+        return lp_sum
+
     def default_transform(self) -> "Transform":
         """
         Return appropriate transform for this distribution's support.

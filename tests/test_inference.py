@@ -15,7 +15,7 @@ class TestSample:
         """Test sample() with Model instance."""
         model = mb.Model(
             priors={"mu": dist.Normal(0, 10)},
-            likelihood=lambda p, d: float(dist.Normal(p["mu"], 1).log_prob(d).sum()),
+            log_likelihood=lambda p, d: float(dist.Normal(p["mu"], 1).log_prob(d).sum()),
         )
         data = np.array([1.0, 2.0, 3.0])
 
@@ -38,7 +38,7 @@ class TestSample:
         """Test return type is InferenceResult."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=10, seed=42)
@@ -53,7 +53,7 @@ class TestSample:
         """Test samples have correct shape for single chain."""
         model = mb.Model(
             priors={"a": dist.Normal(0, 1), "b": dist.HalfNormal(1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=20, num_chains=1, seed=42)
@@ -67,7 +67,7 @@ class TestSample:
         """Test samples have correct shape for multiple chains."""
         model = mb.Model(
             priors={"a": dist.Normal(0, 1), "b": dist.HalfNormal(1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=20, num_chains=3, seed=42)
@@ -80,7 +80,7 @@ class TestSample:
         """Test acceptance rate is array for multiple chains."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, seed=42)
@@ -92,7 +92,7 @@ class TestSample:
         """Test same seed gives same results."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: float(-d * p["x"] ** 2),
+            log_likelihood=lambda p, d: float(-d * p["x"] ** 2),
         )
         data = 1.0
 
@@ -105,7 +105,7 @@ class TestSample:
         """Test different seeds give different results."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result1 = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
@@ -135,7 +135,7 @@ class TestSample:
         # Define model
         model = mb.Model(
             priors={"mu": dist.Normal(0, tau)},
-            likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], sigma).log_prob(d))),
+            log_likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], sigma).log_prob(d))),
         )
 
         # Run MCMC
@@ -160,7 +160,7 @@ class TestSample:
         """Test that constrained samples are properly transformed."""
         model = mb.Model(
             priors={"sigma": dist.HalfNormal(5)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=50, seed=42)
@@ -176,7 +176,7 @@ class TestSample:
         """Test using basic MH sampler."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(
@@ -195,7 +195,7 @@ class TestSample:
         """Test invalid sampler name raises error."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         with pytest.raises(Exception):
@@ -205,7 +205,7 @@ class TestSample:
         """Test providing initial parameter values."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(
@@ -219,7 +219,7 @@ class TestSample:
         """Test that elapsed time is recorded."""
         model = mb.Model(
             priors={"x": dist.Normal(0, 1)},
-            likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: 0.0,
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, seed=42)

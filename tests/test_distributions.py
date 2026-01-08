@@ -51,6 +51,22 @@ class TestNormal:
         d = dist.Normal(loc=2.5, scale=3.0)
         assert d.mean == 2.5
 
+    def test_obs_logp(self) -> None:
+        """obs_logp returns sum of log_prob as float."""
+        d = dist.Normal(loc=0.0, scale=1.0)
+        data: NDArray[np.float64] = np.array([0.0, 1.0, -1.0])
+        result = d.obs_logp(data)
+        expected = float(np.sum(d.log_prob(data)))
+        assert isinstance(result, float)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_obs_logp_scalar(self) -> None:
+        """obs_logp works with scalar input."""
+        d = dist.Normal(loc=0.0, scale=1.0)
+        result = d.obs_logp(0.5)
+        assert isinstance(result, float)
+        np.testing.assert_allclose(result, d.log_prob(0.5), rtol=1e-10)
+
 
 class TestHalfNormal:
     """Tests for HalfNormal distribution."""
