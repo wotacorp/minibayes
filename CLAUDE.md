@@ -156,7 +156,7 @@ Before committing:
 | `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform |
 | **v0.2 Core** | | |
 | `model.py` | ✓ Done | Model class with transforms, Jacobian |
-| `samplers/mh.py` | ✗ Skeleton | MetropolisHastings not implemented |
+| `samplers/mh.py` | ✓ Done | MetropolisHastings with Gaussian proposals |
 | `samplers/adaptive.py` | ✗ Skeleton | AdaptiveMetropolis not implemented |
 | `results.py` | ◐ Partial | Dataclass done; methods skeleton |
 | **v0.3 Interface** | | |
@@ -164,4 +164,4 @@ Before committing:
 | `diagnostics.py` | ✗ Skeleton | ESS, R-hat not implemented |
 | `utils/export.py` | ✗ Skeleton | save/load not implemented |
 
-**Next steps:** Implement MH sampler, then Adaptive MH.
+**Next steps:** Implement Adaptive MH sampler.
