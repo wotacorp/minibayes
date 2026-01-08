@@ -8,6 +8,14 @@ A lightweight library for Bayesian inference designed for production deployment 
 pip install minibayes
 ```
 
+## Features
+
+- **Distributions**: Normal, HalfNormal, Exponential, Gamma, Beta, Uniform
+- **Transforms**: Automatic parameter transforms (Log, Logit, Affine) based on distribution support
+- **Samplers**: Metropolis-Hastings, Adaptive Metropolis with covariance tuning
+- **Diagnostics**: Effective Sample Size (ESS), Gelman-Rubin R-hat
+- **Export**: Save/load results in NPZ or JSON format
+
 ## Development Setup
 
 Requires Python 3.11+ and [uv](https://github.com/astral-sh/uv).
