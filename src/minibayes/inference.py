@@ -1,7 +1,9 @@
 """MCMC inference engine."""
 
+import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 
 import numpy as np
 from numpy.typing import NDArray
@@ -127,6 +129,73 @@ def _run_chain(
     return samples, accepts
 
 
+def _run_chain_worker(
+    args: tuple[
+        "Model",
+        object,
+        dict[str, float] | None,
+        str,
+        dict[str, object] | None,
+        int,
+        int,
+        np.random.Generator,
+        list[str],
+        int,
+        int,
+        float | None,
+        float,
+    ],
+) -> tuple[dict[str, list[float]], int]:
+    """
+    Worker function for parallel chain execution.
+
+    This is a module-level function (not a closure) so it can be pickled
+    for multiprocessing.
+    """
+    (
+        model,
+        data,
+        initial,
+        sampler_name,
+        sampler_kwargs,
+        num_warmup,
+        num_samples,
+        rng,
+        param_names,
+        chain_idx,
+        num_chains,
+        timeout,
+        start_time,
+    ) = args
+
+    # Build log_prob_fn locally (not a closure from outer scope)
+    def log_prob_fn(p: dict[str, float]) -> float:
+        return model.log_prob_unconstrained(p, data)
+
+    # Get initial state
+    chain_initial: dict[str, float] = _get_initial_state(model, initial, data, rng)
+
+    # Create sampler
+    kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
+    sampler_instance: Sampler = _SAMPLERS[sampler_name](**kwargs)
+
+    # Run chain (progress=False in workers to avoid stderr conflicts)
+    return _run_chain(
+        sampler_instance,
+        chain_initial,
+        log_prob_fn,
+        num_warmup,
+        num_samples,
+        rng,
+        param_names,
+        chain_idx,
+        num_chains,
+        progress=False,
+        timeout=timeout,
+        start_time=start_time,
+    )
+
+
 def sample(
     model: Model,
     data: object = None,
@@ -134,6 +203,7 @@ def sample(
     num_samples: int = 1000,
     num_warmup: int = 500,
     num_chains: int = 1,
+    parallel: bool = False,
     sampler: str = "adaptive_mh",
     sampler_kwargs: dict[str, object] | None = None,
     seed: int | None = None,
@@ -158,6 +228,10 @@ def sample(
         Number of warmup/tuning samples (discarded).
     num_chains : int
         Number of independent chains.
+    parallel : bool
+        If True and num_chains > 1, run chains in parallel using processes.
+        Requires log_likelihood to be a module-level function (not a lambda).
+        Default: False.
     sampler : str
         One of: "mh", "adaptive_mh".
     sampler_kwargs : dict, optional
@@ -203,37 +277,72 @@ def sample(
     # Create child RNGs for each chain
     child_rngs: list[np.random.Generator] = list(rng.spawn(num_chains))
 
-    # Run chains
+    # Run chains (parallel or sequential)
+    if parallel and num_chains > 1:
+        # Parallel execution using processes (true parallelism)
+        # Note: log_likelihood must be a module-level function for pickling
+        worker_args = [
+            (
+                model,
+                data,
+                initial,
+                sampler,
+                sampler_kwargs,
+                num_warmup,
+                num_samples,
+                child_rngs[i],
+                param_names,
+                i,
+                num_chains,
+                timeout,
+                start_time,
+            )
+            for i in range(num_chains)
+        ]
+
+        if progress:
+            sys.stderr.write(f"Running {num_chains} chains in parallel...\n")
+
+        try:
+            with ProcessPoolExecutor(max_workers=num_chains) as executor:
+                results = list(executor.map(_run_chain_worker, worker_args))
+        except BrokenExecutor as e:
+            # Workers crashed during unpickling - likely due to unpicklable log_likelihood
+            raise SamplingError(
+                "Parallel sampling failed: log_likelihood must be a module-level "
+                "function defined in an importable .py file (not a lambda, closure, "
+                "or function defined in a notebook/__main__). "
+                "Use parallel=False for notebooks."
+            ) from e
+    else:
+        # Sequential execution (supports closures/lambdas)
+        kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
+
+        def run_one_chain(chain_idx: int) -> tuple[dict[str, list[float]], int]:
+            chain_rng = child_rngs[chain_idx]
+            chain_initial = _get_initial_state(model, initial, data, chain_rng)
+            sampler_instance: Sampler = _SAMPLERS[sampler](**kwargs)
+            return _run_chain(
+                sampler_instance,
+                chain_initial,
+                log_prob_fn,
+                num_warmup,
+                num_samples,
+                chain_rng,
+                param_names,
+                chain_idx,
+                num_chains,
+                progress,
+                timeout,
+                start_time,
+            )
+
+        results = [run_one_chain(i) for i in range(num_chains)]
+
+    # Collect results
     all_samples_unc: dict[str, list[list[float]]] = {name: [] for name in param_names}
     acceptance_rates: list[float] = []
-
-    for chain_idx in range(num_chains):
-        chain_rng: np.random.Generator = child_rngs[chain_idx]
-
-        # Get initial state (sample fresh for each chain if not provided)
-        chain_initial: dict[str, float] = _get_initial_state(model, initial, data, chain_rng)
-
-        # Create fresh sampler instance for each chain
-        kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
-        sampler_instance: Sampler = _SAMPLERS[sampler](**kwargs)
-
-        # Run chain
-        chain_samples, accepts = _run_chain(
-            sampler_instance,
-            chain_initial,
-            log_prob_fn,
-            num_warmup,
-            num_samples,
-            chain_rng,
-            param_names,
-            chain_idx,
-            num_chains,
-            progress,
-            timeout,
-            start_time,
-        )
-
-        # Store results
+    for chain_samples, accepts in results:
         for name in param_names:
             all_samples_unc[name].append(chain_samples[name])
         acceptance_rates.append(accepts / num_samples)
@@ -257,6 +366,9 @@ def sample(
     acceptance_rate: NDArray[np.float64] = np.array(acceptance_rates, dtype=np.float64)
 
     elapsed_time: float = time.perf_counter() - start_time
+
+    if progress:
+        sys.stderr.write(f"Sampling complete in {elapsed_time:.2f}s\n")
 
     return InferenceResult(
         samples=samples_constrained,
