@@ -1,11 +1,24 @@
 """End-to-end tests for mb.sample()."""
 
+import time
+
 import numpy as np
 import pytest
 
 import minibayes as mb
 from minibayes import dist
 from minibayes.results import InferenceResult
+
+
+# Module-level likelihood functions for parallel testing (must be picklable)
+def _zero_likelihood(params: dict[str, float], data: object) -> float:
+    """A likelihood that always returns 0 (flat)."""
+    return 0.0
+
+
+def _quadratic_likelihood(params: dict[str, float], data: object) -> float:
+    """A simple quadratic likelihood centered at 0."""
+    return float(-params["x"] ** 2)
 
 
 class TestSample:
@@ -318,3 +331,115 @@ class TestSampleTimeout:
         from minibayes.exceptions import SamplingError, SamplingTimeoutError
 
         assert issubclass(SamplingTimeoutError, SamplingError)
+
+
+class TestSampleParallel:
+    """Tests for parallel chain execution."""
+
+    def test_parallel_chains_shape(self) -> None:
+        """Test parallel sampling produces correct shape."""
+        # Uses module-level function (required for parallel)
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            log_likelihood=_zero_likelihood,
+        )
+
+        result = mb.sample(
+            model, num_samples=50, num_warmup=20, num_chains=4, parallel=True, seed=42
+        )
+
+        assert result.samples["x"].shape == (4, 50)
+        assert result.num_chains == 4
+        assert result.acceptance_rate.shape == (4,)
+
+    def test_parallel_same_as_sequential(self) -> None:
+        """Test parallel and sequential give same results with same seed."""
+        # Uses module-level function (required for parallel)
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            log_likelihood=_quadratic_likelihood,
+        )
+
+        result_seq = mb.sample(
+            model, num_samples=50, num_warmup=20, num_chains=2, parallel=False, seed=42
+        )
+        result_par = mb.sample(
+            model, num_samples=50, num_warmup=20, num_chains=2, parallel=True, seed=42
+        )
+
+        np.testing.assert_array_equal(result_seq.samples["x"], result_par.samples["x"])
+
+    def test_parallel_single_chain_fallback(self) -> None:
+        """Test parallel=True with single chain works (falls back to sequential)."""
+        # Single chain falls back to sequential, so lambdas still work
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            log_likelihood=lambda p, d: 0.0,
+        )
+
+        result = mb.sample(
+            model, num_samples=50, num_warmup=20, num_chains=1, parallel=True, seed=42
+        )
+
+        assert result.samples["x"].shape == (1, 50)
+
+    def test_parallel_speedup_with_large_workload(self) -> None:
+        """Test that parallel execution provides speedup for large workloads.
+
+        Note: For small workloads, process startup overhead may make parallel
+        slower. This test uses a larger workload where parallel should help.
+        """
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            log_likelihood=_zero_likelihood,
+        )
+
+        # Use larger workload to amortize process startup cost
+        num_samples = 2000
+        num_warmup = 500
+
+        # Sequential timing
+        t0 = time.perf_counter()
+        mb.sample(
+            model,
+            num_samples=num_samples,
+            num_warmup=num_warmup,
+            num_chains=4,
+            parallel=False,
+            seed=42,
+        )
+        seq_time = time.perf_counter() - t0
+
+        # Parallel timing
+        t0 = time.perf_counter()
+        mb.sample(
+            model,
+            num_samples=num_samples,
+            num_warmup=num_warmup,
+            num_chains=4,
+            parallel=True,
+            seed=42,
+        )
+        par_time = time.perf_counter() - t0
+
+        # Print timing for debugging (visible with pytest -v)
+        print(f"\nSequential: {seq_time:.2f}s, Parallel: {par_time:.2f}s")
+
+        # Parallel should be faster for large workloads
+        # Use generous margin (0.95) since CI environments vary
+        assert par_time < seq_time * 0.95, (
+            f"Parallel ({par_time:.2f}s) not faster than sequential ({seq_time:.2f}s)"
+        )
+
+    def test_progress_shows_elapsed_time(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test progress=True shows elapsed time at end."""
+        # Sequential mode, lambdas work fine
+        model = mb.Model(
+            priors={"x": dist.Normal(0, 1)},
+            log_likelihood=lambda p, d: 0.0,
+        )
+
+        mb.sample(model, num_samples=10, num_warmup=5, progress=True, seed=42)
+
+        captured = capsys.readouterr()
+        assert "Sampling complete" in captured.err

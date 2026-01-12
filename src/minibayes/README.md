@@ -112,9 +112,11 @@ result = mb.sample(
     num_samples=1000,         # Samples to draw (post-warmup)
     num_warmup=500,           # Warmup samples (discarded, used for adaptation)
     num_chains=1,             # Number of independent chains
+    parallel=False,           # Run chains in parallel (see below)
     sampler="adaptive_mh",    # "mh" or "adaptive_mh"
     sampler_kwargs=None,      # Extra args for sampler (e.g., proposal_scale)
     seed=None,                # Random seed for reproducibility
+    progress=False,           # Show progress bars
 )
 ```
 
@@ -161,6 +163,44 @@ result = mb.sample(model, data, sampler="mh", sampler_kwargs={"proposal_scale": 
 result = mb.sample(model, data, sampler="mh",
     sampler_kwargs={"proposal_scale": {"mu": 0.5, "sigma": 0.1}})
 ```
+
+### Parallel Sampling
+
+For multi-chain sampling, enable parallel execution with `parallel=True`:
+
+```python
+result = mb.sample(model, data=y, num_chains=4, parallel=True, seed=42)
+```
+
+**Important**: When using `parallel=True`, the `log_likelihood` function must be
+a module-level function (not a lambda or closure). This is required for
+multiprocessing.
+
+```python
+# ❌ Won't work with parallel=True
+model = mb.Model(
+    priors={"mu": dist.Normal(0, 10)},
+    log_likelihood=lambda p, d: dist.Normal(p["mu"], 1).obs_logp(d),
+)
+
+# ✅ Works with parallel=True
+def my_likelihood(params, data):
+    return dist.Normal(params["mu"], 1).obs_logp(data)
+
+model = mb.Model(priors={"mu": dist.Normal(0, 10)}, log_likelihood=my_likelihood)
+```
+
+Sequential mode (`parallel=False`, the default) works with both lambdas and
+module-level functions.
+
+**Notebooks**: Parallel sampling does not work in Jupyter notebooks because
+functions defined in notebooks cannot be pickled for multiprocessing. Use
+`parallel=False` (the default) in notebooks. Parallel mode is designed for
+production scripts where functions are defined in importable `.py` modules.
+
+**Note**: For small workloads, the process startup overhead may outweigh the
+parallelism benefit. Parallel execution is most beneficial for larger models
+with many samples.
 
 ## Inference Results
 
