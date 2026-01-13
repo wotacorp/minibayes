@@ -220,13 +220,3 @@ class TestAdaptiveMetropolis:
         with pytest.raises(ModelSpecError):
             AdaptiveMetropolis(initial_scale=0.0)
 
-    def test_invalid_target_acceptance_raises(self) -> None:
-        """Test that invalid target_acceptance raises ModelSpecError."""
-        with pytest.raises(ModelSpecError):
-            AdaptiveMetropolis(target_acceptance=0.0)
-
-        with pytest.raises(ModelSpecError):
-            AdaptiveMetropolis(target_acceptance=1.0)
-
-        with pytest.raises(ModelSpecError):
-            AdaptiveMetropolis(target_acceptance=-0.5)

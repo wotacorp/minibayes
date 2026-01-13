@@ -15,6 +15,7 @@ except ImportError as e:
 from minibayes.viz.plots import (
     plot_autocorr,
     plot_density,
+    plot_distribution,
     plot_forest,
     plot_predictive,
     plot_samples,
@@ -29,6 +30,7 @@ __all__ = [
     "plot_forest",
     "plot_predictive",
     "plot_autocorr",
+    "plot_distribution",
     "summary_table",
     # Style
     "style",

@@ -18,6 +18,8 @@ class Support(Enum):
     POSITIVE = "positive"  # (0, +inf) -> LogTransform
     UNIT = "unit"  # (0, 1) -> LogitTransform
     BOUNDED = "bounded"  # (a, b) -> AffineTransform
+    BINARY = "binary"  # {0, 1} -> IdentityTransform (discrete)
+    NATURAL = "natural"  # {0, 1, 2, ...} -> IdentityTransform (discrete)
 
 
 class Distribution(ABC):
@@ -146,3 +148,5 @@ class Distribution(ABC):
                 return LogitTransform()
             case Support.BOUNDED:
                 raise NotImplementedError("BOUNDED distributions must override default_transform() to provide bounds for AffineTransform")
+            case Support.BINARY | Support.NATURAL:
+                return IdentityTransform()  # Discrete params aren't transformed
