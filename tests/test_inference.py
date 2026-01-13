@@ -7,18 +7,29 @@ import pytest
 
 import minibayes as mb
 from minibayes import dist
+from minibayes.params import ParamContext
+from minibayes.model import StructuredParams
 from minibayes.results import InferenceResult
 
 
 # Module-level likelihood functions for parallel testing (must be picklable)
-def _zero_likelihood(params: dict[str, float], data: object) -> float:
+def _zero_likelihood(params: StructuredParams, data: object) -> float:
     """A likelihood that always returns 0 (flat)."""
     return 0.0
 
 
-def _quadratic_likelihood(params: dict[str, float], data: object) -> float:
+def _quadratic_likelihood(params: StructuredParams, data: object) -> float:
     """A simple quadratic likelihood centered at 0."""
-    return float(-params["x"] ** 2)
+    x = params["x"]
+    if isinstance(x, np.ndarray):
+        return float(-np.sum(x**2))
+    return float(-x**2)
+
+
+# Module-level priors function for parallel testing
+def _simple_priors(p: ParamContext) -> None:
+    """A simple prior for x."""
+    p("x", dist.Normal(0, 1))
 
 
 class TestSample:
@@ -26,9 +37,13 @@ class TestSample:
 
     def test_with_model(self) -> None:
         """Test sample() with Model instance."""
+
+        def priors(p: ParamContext) -> None:
+            p("mu", dist.Normal(0, 10))
+
         model = mb.Model(
-            priors={"mu": dist.Normal(0, 10)},
-            log_likelihood=lambda p, d: float(dist.Normal(p["mu"], 1).log_prob(d).sum()),
+            priors=priors,
+            log_likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], 1).log_prob(d))),
         )
         data = np.array([1.0, 2.0, 3.0])
 
@@ -41,7 +56,7 @@ class TestSample:
         """Test sample() raises for non-Model input."""
 
         # sample() now only accepts Model, not Callable
-        def log_prob(params: dict[str, float], data: object) -> float:
+        def log_prob(params: StructuredParams, data: object) -> float:
             return float(-(params["x"] ** 2))
 
         with pytest.raises(AttributeError):
@@ -50,8 +65,12 @@ class TestSample:
 
     def test_returns_inference_result(self) -> None:
         """Test return type is InferenceResult."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -65,8 +84,13 @@ class TestSample:
 
     def test_samples_shape_single_chain(self) -> None:
         """Test samples have correct shape for single chain."""
+
+        def priors(p: ParamContext) -> None:
+            p("a", dist.Normal(0, 1))
+            p("b", dist.HalfNormal(1))
+
         model = mb.Model(
-            priors={"a": dist.Normal(0, 1), "b": dist.HalfNormal(1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -81,8 +105,13 @@ class TestSample:
 
     def test_samples_shape_multiple_chains(self) -> None:
         """Test samples have correct shape for multiple chains."""
+
+        def priors(p: ParamContext) -> None:
+            p("a", dist.Normal(0, 1))
+            p("b", dist.HalfNormal(1))
+
         model = mb.Model(
-            priors={"a": dist.Normal(0, 1), "b": dist.HalfNormal(1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -94,8 +123,12 @@ class TestSample:
 
     def test_acceptance_rate_shape(self) -> None:
         """Test acceptance rate is always array with shape (num_chains,)."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -106,8 +139,12 @@ class TestSample:
 
     def test_seed_reproducibility(self) -> None:
         """Test same seed gives same results."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: float(-d * p["x"] ** 2),
         )
         data = 1.0
@@ -119,8 +156,12 @@ class TestSample:
 
     def test_different_seeds_give_different_results(self) -> None:
         """Test different seeds give different results."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -149,8 +190,11 @@ class TestSample:
         posterior_std = float(np.sqrt(1 / (n / sigma**2 + 1 / tau**2)))
 
         # Define model
+        def priors(p: ParamContext) -> None:
+            p("mu", dist.Normal(0, tau))
+
         model = mb.Model(
-            priors={"mu": dist.Normal(0, tau)},
+            priors=priors,
             log_likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], sigma).log_prob(d))),
         )
 
@@ -174,8 +218,12 @@ class TestSample:
 
     def test_constrained_transform(self) -> None:
         """Test that constrained samples are properly transformed."""
+
+        def priors(p: ParamContext) -> None:
+            p("sigma", dist.HalfNormal(5))
+
         model = mb.Model(
-            priors={"sigma": dist.HalfNormal(5)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -190,8 +238,12 @@ class TestSample:
 
     def test_sampler_mh(self) -> None:
         """Test using basic MH sampler."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -209,8 +261,12 @@ class TestSample:
 
     def test_invalid_sampler_raises(self) -> None:
         """Test invalid sampler name raises error."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -221,8 +277,12 @@ class TestSample:
 
     def test_initial_values(self) -> None:
         """Test providing initial parameter values."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -233,8 +293,12 @@ class TestSample:
 
     def test_elapsed_time_recorded(self) -> None:
         """Test that elapsed time is recorded."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -248,8 +312,12 @@ class TestSampleProgress:
 
     def test_progress_false_no_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test progress=False produces no stderr output."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -260,8 +328,12 @@ class TestSampleProgress:
 
     def test_progress_true_produces_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test progress=True produces stderr output."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -273,8 +345,12 @@ class TestSampleProgress:
 
     def test_progress_multiple_chains(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test progress shows chain numbers."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -290,8 +366,12 @@ class TestSampleTimeout:
 
     def test_timeout_none_no_error(self) -> None:
         """Test timeout=None doesn't raise."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -300,8 +380,12 @@ class TestSampleTimeout:
 
     def test_timeout_sufficient_no_error(self) -> None:
         """Test large timeout doesn't raise."""
+
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -314,12 +398,15 @@ class TestSampleTimeout:
 
         from minibayes.exceptions import SamplingTimeoutError
 
-        def slow_likelihood(p: dict[str, float], d: object) -> float:
+        def slow_likelihood(p: StructuredParams, d: object) -> float:
             time_module.sleep(0.05)  # 50ms per step
             return 0.0
 
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=slow_likelihood,
         )
 
@@ -340,7 +427,7 @@ class TestSampleParallel:
         """Test parallel sampling produces correct shape."""
         # Uses module-level function (required for parallel)
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=_simple_priors,
             log_likelihood=_zero_likelihood,
         )
 
@@ -356,7 +443,7 @@ class TestSampleParallel:
         """Test parallel and sequential give same results with same seed."""
         # Uses module-level function (required for parallel)
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=_simple_priors,
             log_likelihood=_quadratic_likelihood,
         )
 
@@ -371,9 +458,13 @@ class TestSampleParallel:
 
     def test_parallel_single_chain_fallback(self) -> None:
         """Test parallel=True with single chain works (falls back to sequential)."""
+
         # Single chain falls back to sequential, so lambdas still work
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -390,7 +481,7 @@ class TestSampleParallel:
         slower. This test uses a larger workload where parallel should help.
         """
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=_simple_priors,
             log_likelihood=_zero_likelihood,
         )
 
@@ -433,9 +524,13 @@ class TestSampleParallel:
 
     def test_progress_shows_elapsed_time(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test progress=True shows elapsed time at end."""
+
         # Sequential mode, lambdas work fine
+        def priors(p: ParamContext) -> None:
+            p("x", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"x": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -443,3 +538,77 @@ class TestSampleParallel:
 
         captured = capsys.readouterr()
         assert "Sampling complete" in captured.err
+
+
+class TestVectorParameters:
+    """Tests for vector parameter support in inference."""
+
+    def test_vector_parameter_shape(self) -> None:
+        """Test vector parameters have correct 3D shape in results."""
+
+        def priors(p: ParamContext) -> None:
+            p("mu", dist.Normal(0, 1))
+            p("theta", dist.Normal(0, 1), size=5)
+
+        model = mb.Model(
+            priors=priors,
+            log_likelihood=lambda p, d: 0.0,
+        )
+
+        result = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
+
+        # Scalar param: (chains, samples)
+        assert result.samples["mu"].shape == (1, 50)
+        # Vector param: (chains, samples, size)
+        assert result.samples["theta"].shape == (1, 50, 5)
+
+    def test_vector_parameter_multiple_chains(self) -> None:
+        """Test vector parameters with multiple chains."""
+
+        def priors(p: ParamContext) -> None:
+            p("theta", dist.Normal(0, 1), size=3)
+
+        model = mb.Model(
+            priors=priors,
+            log_likelihood=lambda p, d: 0.0,
+        )
+
+        result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, seed=42)
+
+        # (num_chains, num_samples, size)
+        assert result.samples["theta"].shape == (2, 50, 3)
+
+    def test_hierarchical_model_inference(self) -> None:
+        """Test inference with hierarchical model."""
+        J = 4
+
+        def priors(p: ParamContext) -> None:
+            mu = p("mu", dist.Normal(0, 5))
+            tau = p("tau", dist.HalfNormal(2))
+            p("theta", dist.Normal(mu, tau), size=J)
+
+        def log_likelihood(params: StructuredParams, data: object) -> float:
+            y, sigma = data
+            theta = params["theta"]
+            assert isinstance(theta, np.ndarray)
+            ll: float = 0.0
+            for j in range(J):
+                ll += float(dist.Normal(theta[j], sigma[j]).log_prob(y[j]))
+            return ll
+
+        model = mb.Model(priors=priors, log_likelihood=log_likelihood)
+
+        # Simple data
+        y = np.array([1.0, 2.0, 3.0, 4.0])
+        sigma = np.array([1.0, 1.0, 1.0, 1.0])
+
+        result = mb.sample(
+            model, data=(y, sigma), num_samples=100, num_warmup=50, seed=42
+        )
+
+        assert result.samples["mu"].shape == (1, 100)
+        assert result.samples["tau"].shape == (1, 100)
+        assert result.samples["theta"].shape == (1, 100, J)
+
+        # tau should be positive
+        assert np.all(result.samples["tau"] > 0)

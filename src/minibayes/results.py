@@ -83,7 +83,8 @@ class InferenceResult:
     def predict(
         self,
         predictive_fn: Callable[
-            [dict[str, float], np.random.Generator], dict[str, ArrayLike]
+            [dict[str, float | NDArray[np.float64]], np.random.Generator],
+            dict[str, ArrayLike],
         ],
         num_samples: int | None = None,
         seed: int | None = None,
@@ -93,8 +94,9 @@ class InferenceResult:
 
         Parameters
         ----------
-        predictive_fn : Callable[[dict[str, float], Generator], dict[str, ArrayLike]]
-            Function (params, rng) -> predictions.
+        predictive_fn : Callable[[StructuredParams, Generator], dict[str, ArrayLike]]
+            Function (params, rng) -> predictions. params contains scalars as float,
+            vectors as 1D arrays.
         num_samples : int, optional
             Number of posterior samples to use.
         seed : int, optional
