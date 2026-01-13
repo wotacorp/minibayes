@@ -279,3 +279,330 @@ class TestUniform:
         d = dist.Uniform(low=low, high=high)
         expected = (low + high) / 2.0
         np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
+
+
+class TestStudentT:
+    """Tests for StudentT distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        df, loc, scale = 5.0, 2.0, 3.0
+        d = dist.StudentT(df=df, loc=loc, scale=scale)
+        scipy_d = stats.t(df=df, loc=loc, scale=scale)
+        x: NDArray[np.float64] = np.array([-2.0, 0.0, 2.0, 5.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_scalar(self) -> None:
+        """log_prob works with scalar input."""
+        d = dist.StudentT(df=3.0, loc=0.0, scale=1.0)
+        result = d.log_prob(0.0)
+        assert isinstance(result, float)
+
+    def test_sample_shape(self) -> None:
+        """sample returns correct shape."""
+        d = dist.StudentT(df=5.0, loc=0.0, scale=1.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert isinstance(samples, np.ndarray)
+        assert samples.shape == (100,)
+
+    def test_support(self) -> None:
+        """Support is REAL."""
+        d = dist.StudentT(df=5.0, loc=0.0, scale=1.0)
+        assert d.support == Support.REAL
+
+    def test_mean(self) -> None:
+        """Mean equals loc when df > 1."""
+        d = dist.StudentT(df=5.0, loc=2.5, scale=1.0)
+        assert d.mean == 2.5
+
+    def test_mean_undefined_for_df_le_1(self) -> None:
+        """Mean is NaN when df <= 1."""
+        d = dist.StudentT(df=1.0, loc=0.0, scale=1.0)
+        assert np.isnan(d.mean)
+
+    def test_invalid_df_raises(self) -> None:
+        """Invalid df raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.StudentT(df=-1.0)
+
+    def test_invalid_scale_raises(self) -> None:
+        """Invalid scale raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.StudentT(df=5.0, scale=-1.0)
+
+
+class TestLogNormal:
+    """Tests for LogNormal distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        loc, scale = 1.0, 0.5
+        d = dist.LogNormal(loc=loc, scale=scale)
+        scipy_d = stats.lognorm(s=scale, scale=np.exp(loc))
+        x: NDArray[np.float64] = np.array([0.5, 1.0, 2.0, 5.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_negative_is_neg_inf(self) -> None:
+        """log_prob returns -inf for non-positive values."""
+        d = dist.LogNormal(loc=0.0, scale=1.0)
+        assert d.log_prob(-1.0) == float("-inf")
+        assert d.log_prob(0.0) == float("-inf")
+
+    def test_sample_positive(self) -> None:
+        """Samples are positive."""
+        d = dist.LogNormal(loc=0.0, scale=1.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert np.all(samples > 0)
+
+    def test_support(self) -> None:
+        """Support is POSITIVE."""
+        d = dist.LogNormal(loc=0.0, scale=1.0)
+        assert d.support == Support.POSITIVE
+
+    def test_mean(self) -> None:
+        """Mean equals exp(loc + scale^2/2)."""
+        loc, scale = 1.0, 0.5
+        d = dist.LogNormal(loc=loc, scale=scale)
+        expected = np.exp(loc + 0.5 * scale * scale)
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
+
+    def test_invalid_scale_raises(self) -> None:
+        """Invalid scale raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.LogNormal(scale=-1.0)
+
+
+class TestCauchy:
+    """Tests for Cauchy distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        loc, scale = 2.0, 3.0
+        d = dist.Cauchy(loc=loc, scale=scale)
+        scipy_d = stats.cauchy(loc=loc, scale=scale)
+        x: NDArray[np.float64] = np.array([-5.0, 0.0, 2.0, 10.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_scalar(self) -> None:
+        """log_prob works with scalar input."""
+        d = dist.Cauchy(loc=0.0, scale=1.0)
+        result = d.log_prob(0.0)
+        assert isinstance(result, float)
+
+    def test_sample_shape(self) -> None:
+        """sample returns correct shape."""
+        d = dist.Cauchy(loc=0.0, scale=1.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert isinstance(samples, np.ndarray)
+        assert samples.shape == (100,)
+
+    def test_support(self) -> None:
+        """Support is REAL."""
+        d = dist.Cauchy(loc=0.0, scale=1.0)
+        assert d.support == Support.REAL
+
+    def test_mean_is_nan(self) -> None:
+        """Mean is NaN (undefined for Cauchy)."""
+        d = dist.Cauchy(loc=0.0, scale=1.0)
+        assert np.isnan(d.mean)
+
+    def test_invalid_scale_raises(self) -> None:
+        """Invalid scale raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.Cauchy(scale=-1.0)
+
+
+class TestInverseGamma:
+    """Tests for InverseGamma distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        shape, scale = 3.0, 2.0
+        d = dist.InverseGamma(shape=shape, scale=scale)
+        scipy_d = stats.invgamma(a=shape, scale=scale)
+        x: NDArray[np.float64] = np.array([0.5, 1.0, 2.0, 5.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_negative_is_neg_inf(self) -> None:
+        """log_prob returns -inf for non-positive values."""
+        d = dist.InverseGamma(shape=2.0, scale=1.0)
+        assert d.log_prob(-1.0) == float("-inf")
+        assert d.log_prob(0.0) == float("-inf")
+
+    def test_sample_positive(self) -> None:
+        """Samples are positive."""
+        d = dist.InverseGamma(shape=2.0, scale=1.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert np.all(samples > 0)
+
+    def test_support(self) -> None:
+        """Support is POSITIVE."""
+        d = dist.InverseGamma(shape=2.0, scale=1.0)
+        assert d.support == Support.POSITIVE
+
+    def test_mean(self) -> None:
+        """Mean equals scale/(shape-1) when shape > 1."""
+        shape, scale = 3.0, 4.0
+        d = dist.InverseGamma(shape=shape, scale=scale)
+        expected = scale / (shape - 1)
+        np.testing.assert_allclose(d.mean, expected, rtol=1e-10)
+
+    def test_mean_infinite_for_shape_le_1(self) -> None:
+        """Mean is infinite when shape <= 1."""
+        d = dist.InverseGamma(shape=1.0, scale=1.0)
+        assert d.mean == float("inf")
+
+    def test_invalid_shape_raises(self) -> None:
+        """Invalid shape raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.InverseGamma(shape=-1.0)
+
+    def test_invalid_scale_raises(self) -> None:
+        """Invalid scale raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.InverseGamma(shape=2.0, scale=-1.0)
+
+
+class TestLaplace:
+    """Tests for Laplace distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        loc, scale = 2.0, 3.0
+        d = dist.Laplace(loc=loc, scale=scale)
+        scipy_d = stats.laplace(loc=loc, scale=scale)
+        x: NDArray[np.float64] = np.array([-5.0, 0.0, 2.0, 10.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_scalar(self) -> None:
+        """log_prob works with scalar input."""
+        d = dist.Laplace(loc=0.0, scale=1.0)
+        result = d.log_prob(0.0)
+        assert isinstance(result, float)
+
+    def test_sample_shape(self) -> None:
+        """sample returns correct shape."""
+        d = dist.Laplace(loc=0.0, scale=1.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert isinstance(samples, np.ndarray)
+        assert samples.shape == (100,)
+
+    def test_support(self) -> None:
+        """Support is REAL."""
+        d = dist.Laplace(loc=0.0, scale=1.0)
+        assert d.support == Support.REAL
+
+    def test_mean(self) -> None:
+        """Mean equals loc."""
+        d = dist.Laplace(loc=2.5, scale=1.0)
+        assert d.mean == 2.5
+
+    def test_invalid_scale_raises(self) -> None:
+        """Invalid scale raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.Laplace(scale=-1.0)
+
+
+class TestBernoulli:
+    """Tests for Bernoulli distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        prob = 0.7
+        d = dist.Bernoulli(prob=prob)
+        scipy_d = stats.bernoulli(p=prob)
+        x: NDArray[np.float64] = np.array([0.0, 1.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpmf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_invalid_is_neg_inf(self) -> None:
+        """log_prob returns -inf for values not in {0, 1}."""
+        d = dist.Bernoulli(prob=0.5)
+        assert d.log_prob(-1.0) == float("-inf")
+        assert d.log_prob(0.5) == float("-inf")
+        assert d.log_prob(2.0) == float("-inf")
+
+    def test_sample_binary(self) -> None:
+        """Samples are in {0, 1}."""
+        d = dist.Bernoulli(prob=0.5)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert np.all((samples == 0) | (samples == 1))
+
+    def test_support(self) -> None:
+        """Support is BINARY."""
+        d = dist.Bernoulli(prob=0.5)
+        assert d.support == Support.BINARY
+
+    def test_mean(self) -> None:
+        """Mean equals prob."""
+        d = dist.Bernoulli(prob=0.7)
+        assert d.mean == 0.7
+
+    def test_invalid_prob_raises(self) -> None:
+        """Invalid prob raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.Bernoulli(prob=-0.1)
+        with pytest.raises(ModelSpecError):
+            dist.Bernoulli(prob=1.1)
+
+
+class TestPoisson:
+    """Tests for Poisson distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference."""
+        rate = 3.0
+        d = dist.Poisson(rate=rate)
+        scipy_d = stats.poisson(mu=rate)
+        x: NDArray[np.float64] = np.array([0.0, 1.0, 3.0, 5.0, 10.0])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpmf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_invalid_is_neg_inf(self) -> None:
+        """log_prob returns -inf for non-natural numbers."""
+        d = dist.Poisson(rate=3.0)
+        assert d.log_prob(-1.0) == float("-inf")
+        assert d.log_prob(1.5) == float("-inf")
+
+    def test_sample_natural(self) -> None:
+        """Samples are non-negative integers."""
+        d = dist.Poisson(rate=3.0)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert np.all(samples >= 0)
+        assert np.all(samples == np.floor(samples))
+
+    def test_support(self) -> None:
+        """Support is NATURAL."""
+        d = dist.Poisson(rate=3.0)
+        assert d.support == Support.NATURAL
+
+    def test_mean(self) -> None:
+        """Mean equals rate."""
+        d = dist.Poisson(rate=5.0)
+        assert d.mean == 5.0
+
+    def test_invalid_rate_raises(self) -> None:
+        """Invalid rate raises ModelSpecError."""
+        with pytest.raises(ModelSpecError):
+            dist.Poisson(rate=-1.0)
+        with pytest.raises(ModelSpecError):
+            dist.Poisson(rate=0.0)

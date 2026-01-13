@@ -158,7 +158,7 @@ Before committing:
 | **v0.1 Foundation** | | |
 | `utils/numerical.py` | ✓ Done | `ensure_rng`, `check_finite`, `log_sum_exp` |
 | `transforms/` | ✓ Done | Identity, Log, Logit, Affine + `default_transform()` |
-| `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform |
+| `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson |
 | **v0.2 Core** | | |
 | `model.py` | ✓ Done | Model class with transforms, Jacobian |
 | `samplers/mh.py` | ✓ Done | MetropolisHastings with Gaussian proposals |
