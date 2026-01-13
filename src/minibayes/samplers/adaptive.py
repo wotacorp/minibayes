@@ -22,8 +22,6 @@ class AdaptiveMetropolis(Sampler):
     ----------
     initial_scale : float
         Initial proposal scale before adaptation.
-    target_acceptance : float
-        Target acceptance rate (0.234 optimal for Gaussians).
 
     References
     ----------
@@ -34,15 +32,11 @@ class AdaptiveMetropolis(Sampler):
     def __init__(
         self,
         initial_scale: float = 1.0,
-        target_acceptance: float = 0.234,
     ) -> None:
         if initial_scale <= 0:
             raise ModelSpecError("initial_scale must be positive")
-        if not 0 < target_acceptance < 1:
-            raise ModelSpecError("target_acceptance must be in (0, 1)")
 
         self._initial_scale: float = initial_scale
-        self._target_acceptance: float = target_acceptance
         self._sample_history: list[dict[str, float]] = []
         self._param_names: list[str] | None = None
         self._cov: NDArray[np.float64] | None = None
@@ -143,7 +137,10 @@ class AdaptiveMetropolis(Sampler):
             return current, False
 
         log_alpha: float = log_prob_proposal - log_prob_current
-        log_u: float = float(np.log(rng.uniform()))
+        # Use 1-U instead of U to avoid log(0) when U=0
+        # Since U ~ Uniform(0,1), 1-U ~ Uniform(0,1) with same distribution
+        # but 1-U is never exactly 0 (since U is never exactly 1)
+        log_u: float = float(np.log(1.0 - rng.uniform()))
 
         if log_u < log_alpha:
             return proposal, True
@@ -186,8 +183,9 @@ class AdaptiveMetropolis(Sampler):
         # Store sample for covariance estimation
         self._sample_history.append(new_state.copy())
 
-        # Update covariance periodically (every 50 steps after min samples)
-        if step_num >= 50 and step_num % 50 == 0:
+        # Update covariance periodically (every 50 steps after collecting 100 samples)
+        # Wait for 100 samples to get a more stable covariance estimate
+        if step_num >= 100 and step_num % 50 == 0:
             self._compute_covariance()
 
         return new_state, accepted

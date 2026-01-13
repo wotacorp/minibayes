@@ -84,7 +84,10 @@ class MetropolisHastings(Sampler):
             return current, False
 
         log_alpha: float = log_prob_proposal - log_prob_current
-        log_u: float = float(np.log(rng.uniform()))
+        # Use 1-U instead of U to avoid log(0) when U=0
+        # Since U ~ Uniform(0,1), 1-U ~ Uniform(0,1) with same distribution
+        # but 1-U is never exactly 0 (since U is never exactly 1)
+        log_u: float = float(np.log(1.0 - rng.uniform()))
 
         if log_u < log_alpha:
             return proposal, True

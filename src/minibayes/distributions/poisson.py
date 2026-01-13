@@ -18,13 +18,10 @@ def _lgamma_scalar(val: float) -> float:
     return math.lgamma(val)
 
 
-# Vectorized version for array operations
-_lgamma_vec = np.vectorize(_lgamma_scalar, otypes=[np.float64])
-
-
 def _lgamma_array(x: NDArray[np.float64]) -> NDArray[np.float64]:
     """Compute lgamma element-wise for arrays."""
-    result: NDArray[np.float64] = _lgamma_vec(x)
+    flat: list[float] = [_lgamma_scalar(float(v)) for v in x.flat]
+    result: NDArray[np.float64] = np.array(flat, dtype=np.float64).reshape(x.shape)
     return result
 
 

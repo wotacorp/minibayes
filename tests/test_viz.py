@@ -63,6 +63,7 @@ class TestVizImport:
         assert "blue" in PALETTE
         assert isinstance(CHAIN_COLORS, list)
         assert len(CHAIN_COLORS) == 10
+        assert callable(style)
 
 
 class TestPlotDensity:

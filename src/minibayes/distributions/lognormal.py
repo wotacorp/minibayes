@@ -67,21 +67,17 @@ class LogNormal(Distribution):
         """
         arr: NDArray[np.float64] = np.asarray(x, dtype=np.float64)
 
-        # Use safe_arr to avoid log of non-positive values
-        positive_mask: NDArray[np.bool_] = arr > 0
-        safe_arr: NDArray[np.float64] = np.where(positive_mask, arr, 1.0)
-
-        # Log-normal log_prob = Normal log_prob on log(x) - log(x) for Jacobian
-        log_x: NDArray[np.float64] = np.log(safe_arr)
-        z: NDArray[np.float64] = (log_x - self._loc) / self._scale
-        z_squared: NDArray[np.float64] = np.square(z)
-        log_scale: float = float(np.log(self._scale))
-
-        # Normal log_prob on log(x), minus log(x) for change of variables
-        result: NDArray[np.float64] = _LOG_2PI_HALF - log_scale - 0.5 * z_squared - log_x
+        # Compute log_prob, then mask non-positive values to -inf
+        with np.errstate(invalid="ignore", divide="ignore"):
+            log_x: NDArray[np.float64] = np.log(arr)
+            z: NDArray[np.float64] = (log_x - self._loc) / self._scale
+            z_squared: NDArray[np.float64] = np.square(z)
+            log_scale: float = float(np.log(self._scale))
+            # Normal log_prob on log(x), minus log(x) for Jacobian
+            result: NDArray[np.float64] = _LOG_2PI_HALF - log_scale - 0.5 * z_squared - log_x
 
         # Return -inf for non-positive values
-        result = np.where(positive_mask, result, -np.inf)
+        result = np.where(arr > 0, result, -np.inf)
 
         if arr.ndim == 0:
             return float(result)

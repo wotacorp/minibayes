@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
+    from minibayes.distributions.base import Distribution
     from minibayes.results import InferenceResult
 
 
@@ -536,3 +537,165 @@ def summary_table(
         lines.append(fmt_row(row))
 
     return "\n".join(lines)
+
+
+def plot_distribution(
+    distributions: Distribution | dict[str, Distribution],
+    x: NDArray[np.float64] | None = None,
+    ax: Axes | None = None,
+    k_max: int = 20,
+) -> Figure:
+    """
+    Plot PDF/PMF for one or more distributions.
+
+    Automatically detects continuous vs discrete from distribution.support.
+
+    Parameters
+    ----------
+    distributions : Distribution or dict[str, Distribution]
+        Single distribution or dict mapping labels to distributions.
+    x : ndarray, optional
+        Points for continuous PDFs. If None, auto-generated from support.
+    ax : Axes, optional
+        Matplotlib axes. If None, creates new figure.
+    k_max : int
+        Maximum k for discrete PMF plots (default 20).
+
+    Returns
+    -------
+    Figure
+        Matplotlib figure.
+
+    Examples
+    --------
+    >>> from minibayes import dist, viz
+    >>> viz.plot_distribution(dist.Normal(0, 1))
+    >>> viz.plot_distribution(
+    ...     {
+    ...         "N(0,1)": dist.Normal(0, 1),
+    ...         "N(0,2)": dist.Normal(0, 2),
+    ...     }
+    ... )
+    """
+    import matplotlib.pyplot as plt
+
+    from minibayes.distributions.base import Distribution, Support
+
+    # Normalize input to dict
+    if isinstance(distributions, Distribution):
+        dist_dict: dict[str, Distribution] = {"": distributions}
+    else:
+        dist_dict = distributions
+
+    if not dist_dict:
+        raise ValueError("At least one distribution required")
+
+    # Check if all distributions are discrete
+    discrete_supports = {Support.BINARY, Support.NATURAL}
+    all_discrete = all(d.support in discrete_supports for d in dist_dict.values())
+
+    # Create figure if needed
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=(8, 4))
+        ax_plot = cast("Axes", ax_plot)
+        fig_out: Figure = cast("Figure", fig)
+    else:
+        fig_out = cast("Figure", ax.figure)
+        ax_plot = ax
+
+    _apply_style_to_fig(fig_out)
+    _style_axes(ax_plot)
+
+    if all_discrete:
+        # Bar plot for discrete distributions
+        _plot_discrete_distributions(ax_plot, dist_dict, k_max)
+    else:
+        # Line plot for continuous distributions
+        _plot_continuous_distributions(ax_plot, dist_dict, x)
+
+    ax_plot.set_ylabel("Density" if not all_discrete else "Probability", fontsize=10, color="#4A4A4A")
+
+    # Only show legend if there are labels
+    if any(label for label in dist_dict):
+        ax_plot.legend(fontsize=9, frameon=False)
+
+    plt.tight_layout()
+    return fig_out
+
+
+def _get_default_x_range(d: Distribution) -> NDArray[np.float64]:
+    """Generate default x range based on distribution support."""
+    from minibayes.distributions.base import Support
+
+    support = d.support
+
+    if support == Support.REAL:
+        return np.linspace(-5.0, 5.0, 200)
+    elif support == Support.POSITIVE:
+        return np.linspace(0.01, 5.0, 200)
+    elif support == Support.UNIT:
+        return np.linspace(0.01, 0.99, 200)
+    elif support == Support.BOUNDED:
+        # Access private attributes for bounds
+        low: float = getattr(d, "_low", 0.0)
+        high: float = getattr(d, "_high", 1.0)
+        margin = (high - low) * 0.05
+        return np.linspace(low - margin, high + margin, 200)
+    else:
+        # Fallback for discrete (shouldn't reach here)
+        return np.linspace(-5.0, 5.0, 200)
+
+
+def _plot_continuous_distributions(
+    ax: Axes,
+    dist_dict: dict[str, Distribution],
+    x: NDArray[np.float64] | None,
+) -> None:
+    """Plot continuous distributions as line plots."""
+    for i, (label, d) in enumerate(dist_dict.items()):
+        color = CHAIN_COLORS[i % len(CHAIN_COLORS)]
+
+        # Get x values
+        x_vals = x if x is not None else _get_default_x_range(d)
+
+        # Compute PDF
+        log_prob: NDArray[np.float64] = np.asarray(d.log_prob(x_vals), dtype=np.float64)
+        y: NDArray[np.float64] = np.exp(log_prob)
+
+        ax.plot(x_vals, y, linewidth=2, color=color, label=label if label else None)
+
+    ax.set_xlabel("x", fontsize=10, color="#4A4A4A")
+
+
+def _plot_discrete_distributions(
+    ax: Axes,
+    dist_dict: dict[str, Distribution],
+    k_max: int,
+) -> None:
+    """Plot discrete distributions as bar plots."""
+    from minibayes.distributions.base import Support
+
+    n_dists = len(dist_dict)
+
+    # Determine k range based on first distribution
+    first_dist = next(iter(dist_dict.values()))
+    if first_dist.support == Support.BINARY:
+        k: NDArray[np.int64] = np.array([0, 1], dtype=np.int64)
+    else:
+        k = np.arange(0, k_max + 1, dtype=np.int64)
+
+    k_float: NDArray[np.float64] = k.astype(np.float64)
+    width = 0.8 / n_dists
+
+    for i, (label, d) in enumerate(dist_dict.items()):
+        color = CHAIN_COLORS[i % len(CHAIN_COLORS)]
+        offset = (i - n_dists / 2 + 0.5) * width
+
+        # Compute PMF
+        log_prob: NDArray[np.float64] = np.asarray(d.log_prob(k_float), dtype=np.float64)
+        probs: NDArray[np.float64] = np.exp(log_prob)
+
+        ax.bar(k + offset, probs, width=width, color=color, alpha=0.8, label=label if label else None)
+
+    ax.set_xlabel("k", fontsize=10, color="#4A4A4A")
+    ax.set_xticks(k)

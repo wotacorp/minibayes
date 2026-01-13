@@ -75,17 +75,15 @@ class InverseGamma(Distribution):
         """
         arr: NDArray[np.float64] = np.asarray(x, dtype=np.float64)
 
-        # Use safe_arr to avoid log/reciprocal of non-positive values
-        positive_mask: NDArray[np.bool_] = arr > 0
-        safe_arr: NDArray[np.float64] = np.where(positive_mask, arr, 1.0)
-
-        # log p(x) = log_normalizer + (-shape-1)*log(x) - scale/x
-        log_x: NDArray[np.float64] = np.log(safe_arr)
-        inv_x: NDArray[np.float64] = np.reciprocal(safe_arr)
-        result: NDArray[np.float64] = self._log_normalizer + self._neg_shape_plus_1 * log_x - self._scale * inv_x
+        # Compute log_prob, then mask non-positive values to -inf
+        with np.errstate(invalid="ignore", divide="ignore"):
+            log_x: NDArray[np.float64] = np.log(arr)
+            inv_x: NDArray[np.float64] = np.reciprocal(arr)
+            # log p(x) = log_normalizer + (-shape-1)*log(x) - scale/x
+            result: NDArray[np.float64] = self._log_normalizer + self._neg_shape_plus_1 * log_x - self._scale * inv_x
 
         # Return -inf for non-positive values
-        result = np.where(positive_mask, result, -np.inf)
+        result = np.where(arr > 0, result, -np.inf)
 
         if arr.ndim == 0:
             return float(result)
