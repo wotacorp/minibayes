@@ -5,49 +5,85 @@ from collections.abc import Callable
 import numpy as np
 from numpy.typing import NDArray
 
-from minibayes.distributions.base import Distribution
 from minibayes.exceptions import ModelSpecError
-from minibayes.transforms import Transform
-from minibayes.utils import ensure_rng
+from minibayes.params import ParamContext, ParamInfo, ParamMode
+from minibayes.transforms import IdentityTransform, Transform
+
+# Type alias for structured parameter values
+StructuredParams = dict[str, float | NDArray[np.float64]]
+FlatParams = dict[str, float]
 
 
 class Model:
     """
     A Bayesian model with explicit priors and log-likelihood.
 
-    Priors are assumed independent (no hierarchical structure).
-    Transforms are derived automatically from distribution support.
+    Supports hierarchical models through the p(...) API where dependencies
+    are defined by execution order.
 
     Parameters
     ----------
-    priors : dict[str, Distribution]
-        Prior distributions for each parameter.
+    priors : Callable[[ParamContext], None]
+        Function that registers parameters using p(name, dist, size=None).
     log_likelihood : Callable[[dict, object], float]
         Function (params, data) -> log_likelihood value.
+
+    Examples
+    --------
+    >>> from minibayes import Model, dist
+    >>>
+    >>> def priors(p):
+    ...     mu = p("mu", dist.Normal(0, 5))
+    ...     tau = p("tau", dist.HalfCauchy(5))
+    ...     theta = p("theta", dist.Normal(mu, tau), size=8)
+    >>>
+    >>> def log_likelihood(params, data):
+    ...     return dist.Normal(params["theta"], data["sigma"]).obs_logp(data["y"])
+    >>>
+    >>> model = Model(priors=priors, log_likelihood=log_likelihood)
     """
 
     def __init__(
         self,
-        priors: dict[str, Distribution],
-        log_likelihood: Callable[[dict[str, float], object], float],
+        priors: Callable[[ParamContext], None],
+        log_likelihood: Callable[[StructuredParams, object], float],
     ) -> None:
-        if not priors:
-            raise ModelSpecError("priors must be non-empty")
-
-        self._priors = priors
+        self._priors_fn = priors
         self._log_likelihood_fn = log_likelihood
-        self._param_names = list(priors.keys())
+
+        # Run priors once in sample mode to discover structure
+        ctx = ParamContext(mode=ParamMode.SAMPLE)
+        self._priors_fn(ctx)
+
+        if not ctx.param_info:
+            raise ModelSpecError("priors function must register at least one parameter")
+
+        self._param_info: dict[str, ParamInfo] = ctx.param_info
+        self._param_order: list[str] = ctx.param_order
+        self._param_names: list[str] = list(ctx.param_info.keys())
 
         # Build transforms from distribution support
         self._transforms: dict[str, Transform] = {}
-        for name, prior in priors.items():
-            self._transforms[name] = prior.default_transform()
+        for name, info in self._param_info.items():
+            self._transforms[name] = info.distribution.default_transform()
+
+        # Precompute params that need Jacobian correction (skip IdentityTransform)
+        self._params_with_jacobian: list[str] = [
+            name
+            for name in self._param_order
+            if not isinstance(self._transforms[name], IdentityTransform)
+        ]
+
+        # Build flat parameter names for sampler interface
+        self._flat_names: list[str] = self._build_flat_names()
 
     # -------------------------------------------------------------------------
     # Explicit methods - no context-dependent magic
     # -------------------------------------------------------------------------
 
-    def sample_prior(self, rng: np.random.Generator | None = None) -> dict[str, float]:
+    def sample_prior(
+        self, rng: np.random.Generator | None = None
+    ) -> StructuredParams:
         """
         Draw one sample from the joint prior.
 
@@ -58,28 +94,36 @@ class Model:
 
         Returns
         -------
-        dict[str, float]
+        dict[str, float | NDArray]
             Parameter values in constrained space.
+            Scalar parameters are floats, vector parameters are 1D arrays.
         """
-        generator: np.random.Generator = ensure_rng(rng)
-        result: dict[str, float] = {}
-        for name, prior in self._priors.items():
-            sample_val = prior.sample(size=None, rng=generator)
-            result[name] = float(sample_val)
-        return result
+        ctx = ParamContext(mode=ParamMode.SAMPLE, rng=rng)
+        self._priors_fn(ctx)
+        return ctx.values
 
-    def prior_means(self) -> dict[str, float]:
+    def prior_means(self) -> dict[str, float | NDArray[np.float64]]:
         """
         Return the mean of each prior distribution.
 
+        For hierarchical models, this samples parents first to get
+        means for child parameters.
+
         Returns
         -------
-        dict[str, float]
+        dict[str, float | NDArray]
             Mean value for each parameter.
         """
-        return {name: self._priors[name].mean for name in self._param_names}
+        result: dict[str, float | NDArray[np.float64]] = {}
+        for name, info in self._param_info.items():
+            mean_val: float = info.distribution.mean
+            if info.is_vector:
+                result[name] = np.full(info.size, mean_val, dtype=np.float64)
+            else:
+                result[name] = mean_val
+        return result
 
-    def log_prior(self, params: dict[str, float]) -> float:
+    def log_prior(self, params: StructuredParams) -> float:
         """
         Compute log prior probability.
 
@@ -93,13 +137,11 @@ class Model:
         float
             Sum of log_prob for each prior.
         """
-        total: float = 0.0
-        for name, prior in self._priors.items():
-            lp = prior.log_prob(params[name])
-            total += float(lp)
-        return total
+        ctx = ParamContext(mode=ParamMode.EVALUATE, values=params)
+        self._priors_fn(ctx)
+        return ctx.log_prob
 
-    def log_likelihood(self, params: dict[str, float], data: object) -> float:
+    def log_likelihood(self, params: StructuredParams, data: object) -> float:
         """
         Compute log likelihood.
 
@@ -117,7 +159,7 @@ class Model:
         """
         return self._log_likelihood_fn(params, data)
 
-    def log_prob(self, params: dict[str, float], data: object) -> float:
+    def log_prob(self, params: StructuredParams, data: object) -> float:
         """
         Compute unnormalized log posterior = log_prior + log_likelihood.
 
@@ -159,7 +201,7 @@ class Model:
         """
         return self._transforms
 
-    def to_unconstrained(self, params: dict[str, float]) -> dict[str, float]:
+    def to_unconstrained(self, params: StructuredParams) -> StructuredParams:
         """
         Transform constrained params to unconstrained space.
 
@@ -175,15 +217,22 @@ class Model:
         dict
             Parameter values in unconstrained space.
         """
-        result: dict[str, float] = {}
-        for name in self._param_names:
+        result: StructuredParams = {}
+        for name in self._param_order:
+            info = self._param_info[name]
             transform = self._transforms[name]
-            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(params[name]))
-            transformed: NDArray[np.float64] = transform.forward(scalar)
-            result[name] = float(transformed.flat[0])
+            value = params[name]
+
+            if info.is_vector:
+                arr: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
+                result[name] = transform.forward(arr)
+            else:
+                scalar: NDArray[np.float64] = np.atleast_1d(np.float64(value))
+                transformed: NDArray[np.float64] = transform.forward(scalar)
+                result[name] = float(transformed.flat[0])
         return result
 
-    def to_constrained(self, unconstrained: dict[str, float]) -> dict[str, float]:
+    def to_constrained(self, unconstrained: StructuredParams) -> StructuredParams:
         """
         Transform unconstrained params back to constrained space.
 
@@ -199,17 +248,106 @@ class Model:
         dict
             Parameter values in constrained space.
         """
-        result: dict[str, float] = {}
-        for name in self._param_names:
+        result: StructuredParams = {}
+        for name in self._param_order:
+            info = self._param_info[name]
             transform = self._transforms[name]
-            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(unconstrained[name]))
-            constrained: NDArray[np.float64] = transform.inverse(scalar)
-            result[name] = float(constrained.flat[0])
+            value = unconstrained[name]
+
+            if info.is_vector:
+                arr: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
+                result[name] = transform.inverse(arr)
+            else:
+                scalar: NDArray[np.float64] = np.atleast_1d(np.float64(value))
+                constrained: NDArray[np.float64] = transform.inverse(scalar)
+                result[name] = float(constrained.flat[0])
+        return result
+
+    # -------------------------------------------------------------------------
+    # Flat/structured conversion for sampler interface
+    # -------------------------------------------------------------------------
+
+    def _build_flat_names(self) -> list[str]:
+        """Build list of flattened parameter names."""
+        flat_names: list[str] = []
+        for name in self._param_order:
+            info = self._param_info[name]
+            if info.is_vector:
+                flat_names.extend(f"{name}[{i}]" for i in range(info.size))
+            else:
+                flat_names.append(name)
+        return flat_names
+
+    def to_flat_unconstrained(self, params: StructuredParams) -> FlatParams:
+        """
+        Convert structured constrained params to flat unconstrained.
+
+        This is used to prepare parameters for the sampler, which operates
+        on a flat dict[str, float].
+
+        Parameters
+        ----------
+        params : dict
+            Structured params: scalars as float, vectors as 1D arrays.
+
+        Returns
+        -------
+        dict[str, float]
+            Flattened params with keys like "theta[0]", "theta[1]", etc.
+        """
+        result: FlatParams = {}
+        for name in self._param_order:
+            info = self._param_info[name]
+            transform = self._transforms[name]
+            value = params[name]
+
+            if info.is_vector:
+                arr: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
+                unc: NDArray[np.float64] = transform.forward(arr)
+                for i in range(info.size):
+                    val: float = float(unc.flat[i])
+                    result[f"{name}[{i}]"] = val
+            else:
+                scalar: NDArray[np.float64] = np.atleast_1d(np.float64(value))
+                unc = transform.forward(scalar)
+                result[name] = float(unc.flat[0])
+        return result
+
+    def from_flat_unconstrained(self, flat: FlatParams) -> StructuredParams:
+        """
+        Convert flat unconstrained params to structured constrained.
+
+        This is used to convert sampler output back to structured form.
+
+        Parameters
+        ----------
+        flat : dict[str, float]
+            Flattened unconstrained params.
+
+        Returns
+        -------
+        dict
+            Structured params: scalars as float, vectors as 1D arrays.
+        """
+        result: StructuredParams = {}
+        for name in self._param_order:
+            info = self._param_info[name]
+            transform = self._transforms[name]
+
+            if info.is_vector:
+                unc_list: list[float] = [
+                    flat[f"{name}[{i}]"] for i in range(info.size)
+                ]
+                unc_arr: NDArray[np.float64] = np.array(unc_list, dtype=np.float64)
+                result[name] = transform.inverse(unc_arr)
+            else:
+                scalar: NDArray[np.float64] = np.atleast_1d(np.float64(flat[name]))
+                result[name] = float(transform.inverse(scalar).flat[0])
         return result
 
     def log_prob_unconstrained(
         self,
-        unconstrained: dict[str, float],
+        unconstrained: FlatParams,
         data: object,
     ) -> float:
         """
@@ -220,8 +358,8 @@ class Model:
 
         Parameters
         ----------
-        unconstrained : dict
-            Parameter values in unconstrained space.
+        unconstrained : dict[str, float]
+            Flat parameter values in unconstrained space.
         data : object
             Observed data.
 
@@ -230,20 +368,27 @@ class Model:
         float
             Log posterior with Jacobian correction.
         """
-        # Transform to constrained space
-        constrained: dict[str, float] = self.to_constrained(unconstrained)
+        # Convert flat unconstrained to structured constrained
+        constrained: StructuredParams = self.from_flat_unconstrained(unconstrained)
 
         # Compute log_prob in constrained space
         lp: float = self.log_prob(constrained, data)
 
-        # Add Jacobian correction: sum of log|d(theta)/d(phi)|
+        # Add Jacobian correction (skip IdentityTransform params - they contribute 0)
         jacobian_correction: float = 0.0
-        for name in self._param_names:
+        for name in self._params_with_jacobian:
+            info = self._param_info[name]
             transform = self._transforms[name]
-            theta: float = constrained[name]
-            scalar: NDArray[np.float64] = np.atleast_1d(np.float64(theta))
-            log_det: NDArray[np.float64] = transform.log_det_jacobian(scalar)
-            jacobian_correction += float(log_det.flat[0])
+            value = constrained[name]
+
+            if info.is_vector:
+                arr: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
+                log_det: NDArray[np.float64] = transform.log_det_jacobian(arr)
+                jacobian_correction += float(np.sum(log_det))
+            else:
+                scalar: NDArray[np.float64] = np.atleast_1d(np.float64(value))
+                log_det = transform.log_det_jacobian(scalar)
+                jacobian_correction += float(log_det.flat[0])
 
         return lp + jacobian_correction
 
@@ -254,16 +399,42 @@ class Model:
     @property
     def param_names(self) -> list[str]:
         """
-        List of parameter names.
+        List of parameter names (structured).
 
         Returns
         -------
         list[str]
             Parameter names.
         """
-        return self._param_names
+        return list(self._param_names)
 
-    def validate_params(self, params: dict[str, float]) -> bool:
+    @property
+    def flat_param_names(self) -> list[str]:
+        """
+        List of flattened parameter names.
+
+        Vector parameters are expanded: ["theta[0]", "theta[1]", ...].
+
+        Returns
+        -------
+        list[str]
+            Flattened parameter names.
+        """
+        return list(self._flat_names)
+
+    @property
+    def param_info(self) -> dict[str, ParamInfo]:
+        """
+        Get parameter metadata.
+
+        Returns
+        -------
+        dict[str, ParamInfo]
+            Metadata for each parameter.
+        """
+        return dict(self._param_info)
+
+    def validate_params(self, params: StructuredParams) -> bool:
         """
         Check if params are valid (correct names, within support).
 
@@ -295,10 +466,20 @@ class Model:
             raise ModelSpecError(f"Unknown parameters: {extra}")
 
         # Check values are within support
-        for name, prior in self._priors.items():
+        for name, info in self._param_info.items():
             value = params[name]
-            lp = prior.log_prob(value)
-            if not np.isfinite(float(lp)):
-                raise ModelSpecError(f"Parameter '{name}' value {value} is outside support")
+            lp: NDArray[np.float64] | float = info.distribution.log_prob(value)
+            # Type narrowing for mypy
+            if not isinstance(lp, float):
+                lp_arr: NDArray[np.float64] = lp
+                if not bool(np.all(np.isfinite(lp_arr))):
+                    raise ModelSpecError(
+                        f"Parameter '{name}' has values outside support"
+                    )
+            else:
+                if not np.isfinite(lp):
+                    raise ModelSpecError(
+                        f"Parameter '{name}' value {value} is outside support"
+                    )
 
         return True

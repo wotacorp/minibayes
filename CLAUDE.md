@@ -168,5 +168,11 @@ Before committing:
 | `inference.py` | ✓ Done | `sample()` entry point with Model support |
 | `diagnostics.py` | ✓ Done | ESS (FFT-based), R-hat, summary |
 | `utils/export.py` | ✓ Done | save_npz, load_npz, to_json |
+| **v0.4 Hierarchical** | | |
+| `params.py` | ✓ Done | ParamContext, ParamInfo for p(...) API |
+| `model.py` (hierarchical) | ✓ Done | Priors function, vector params, conditionals |
+| `diagnostics.py` (vectors) | ✓ Done | Handle 3D arrays in summary() |
+| `predictive.py` (vectors) | ✓ Done | Handle vector params in posterior predictive |
+| `inference.py` (vectors) | ✓ Done | Structured results with 3D sample arrays |
 
-**v0.3 complete.** Next: v0.4 (HMC sampler, Numba JIT).
+**v0.4 complete.** Next: v0.5 (HMC sampler, NUTS).

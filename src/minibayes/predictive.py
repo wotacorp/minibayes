@@ -9,8 +9,9 @@ from numpy.typing import ArrayLike, NDArray
 from minibayes.utils import ensure_rng
 
 if TYPE_CHECKING:
-    from minibayes.model import Model
+    from minibayes.model import Model, StructuredParams
     from minibayes.results import InferenceResult
+
 
 
 def _get_total_samples(samples: dict[str, NDArray[np.float64]]) -> int:
@@ -28,33 +29,48 @@ def _get_total_samples(samples: dict[str, NDArray[np.float64]]) -> int:
 def _get_param_dict(
     samples: dict[str, NDArray[np.float64]],
     flat_idx: int,
-) -> dict[str, float]:
+) -> "StructuredParams":
     """
     Extract single parameter dict from samples at given flattened index.
 
-    Handles both single-chain (n_samples,) and multi-chain
-    (n_chains, n_samples) shapes by flattening.
+    Handles single-chain, multi-chain, and vector parameters:
+    - Scalar 1D: (n_samples,)
+    - Scalar 2D: (n_chains, n_samples)
+    - Vector 3D: (n_chains, n_samples, size)
 
     Parameters
     ----------
     samples : dict[str, NDArray[np.float64]]
         Posterior samples.
     flat_idx : int
-        Index into flattened samples.
+        Index into flattened samples (over chains and samples, not vector size).
 
     Returns
     -------
-    dict[str, float]
-        Parameter values at the given index.
+    StructuredParams
+        Parameter values at the given index. Scalars as float, vectors as 1D array.
     """
-    result: dict[str, float] = {}
+    result: dict[str, float | NDArray[np.float64]] = {}
     for name, arr in samples.items():
         if arr.ndim == 1:
-            result[name] = cast("float", arr[flat_idx])
+            # Single chain scalar: (n_samples,)
+            val_1d: float = float(arr.flat[flat_idx])
+            result[name] = val_1d
+        elif arr.ndim == 2:
+            # Multi-chain scalar: (n_chains, n_samples) -> flatten and index
+            n_samples: int = arr.shape[1]
+            chain_idx: int = flat_idx // n_samples
+            sample_idx: int = flat_idx % n_samples
+            val_2d: float = float(arr.flat[chain_idx * n_samples + sample_idx])
+            result[name] = val_2d
+        elif arr.ndim == 3:
+            # Vector parameter: (n_chains, n_samples, size)
+            n_samples = arr.shape[1]
+            chain_idx = flat_idx // n_samples
+            sample_idx = flat_idx % n_samples
+            result[name] = arr[chain_idx, sample_idx, :]  # Returns 1D array of size
         else:
-            # Multi-chain: flatten and index
-            flat_arr: NDArray[np.float64] = arr.ravel()
-            result[name] = cast("float", flat_arr[flat_idx])
+            raise ValueError(f"Unsupported array dimension {arr.ndim} for {name}")
     return result
 
 
@@ -75,7 +91,7 @@ def _stack_predictions(
 def sample_posterior_predictive(
     result: "InferenceResult",
     predictive_fn: Callable[
-        [dict[str, float], np.random.Generator], dict[str, ArrayLike]
+        ["StructuredParams", np.random.Generator], dict[str, ArrayLike]
     ],
     num_samples: int | None = None,
     seed: int | None = None,
@@ -90,9 +106,9 @@ def sample_posterior_predictive(
     ----------
     result : InferenceResult
         Posterior samples from MCMC.
-    predictive_fn : Callable[[dict[str, float], Generator], dict[str, ArrayLike]]
+    predictive_fn : Callable[[StructuredParams, Generator], dict[str, ArrayLike]]
         Function (params, rng) -> predictions.
-        - params: dict of parameter values (e.g., {"mu": 2.5, "sigma": 1.0})
+        - params: dict of parameter values. Scalars as float, vectors as 1D array.
         - rng: numpy random generator for stochastic predictions
         - Returns: dict[str, array] of predictions (must return dict)
     num_samples : int, optional
@@ -135,7 +151,7 @@ def sample_posterior_predictive(
 
     for i in range(n_indices):
         idx: int = cast("int", indices[i])
-        params: dict[str, float] = _get_param_dict(result.samples, idx)
+        params: StructuredParams = _get_param_dict(result.samples, idx)
         raw_output: dict[str, ArrayLike] = predictive_fn(params, rng)
         pred: dict[str, NDArray[np.float64]] = {
             k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()
@@ -148,7 +164,7 @@ def sample_posterior_predictive(
 def sample_prior_predictive(
     model: "Model",
     predictive_fn: Callable[
-        [dict[str, float], np.random.Generator], dict[str, ArrayLike]
+        ["StructuredParams", np.random.Generator], dict[str, ArrayLike]
     ],
     num_samples: int = 500,
     seed: int | None = None,
@@ -163,7 +179,7 @@ def sample_prior_predictive(
     ----------
     model : Model
         Model with priors defined.
-    predictive_fn : Callable[[dict[str, float], Generator], dict[str, ArrayLike]]
+    predictive_fn : Callable[[StructuredParams, Generator], dict[str, ArrayLike]]
         Function (params, rng) -> predictions (must return dict).
     num_samples : int
         Number of prior samples to draw.
@@ -186,7 +202,7 @@ def sample_prior_predictive(
 
     all_predictions: list[dict[str, NDArray[np.float64]]] = []
     for _ in range(num_samples):
-        params: dict[str, float] = model.sample_prior(rng)
+        params: StructuredParams = model.sample_prior(rng)
         raw_output: dict[str, ArrayLike] = predictive_fn(params, rng)
         pred: dict[str, NDArray[np.float64]] = {
             k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()

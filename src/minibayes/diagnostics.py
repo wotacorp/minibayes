@@ -141,6 +141,39 @@ def r_hat(chains: NDArray[np.float64]) -> float:
     return r_hat_val
 
 
+def _summarize_2d(
+    name: str,
+    arr: NDArray[np.float64],
+    percentiles: list[int],
+) -> dict[str, float]:
+    """Summarize a 2D array (num_chains, num_samples)."""
+    flat: NDArray[np.float64] = arr.flatten()
+
+    stats: dict[str, float] = {
+        "mean": cast("float", np.mean(flat)),
+        "std": cast("float", np.std(flat, ddof=1)),
+    }
+
+    # Compute percentiles
+    for p in percentiles:
+        key: str = f"{p}%"
+        stats[key] = cast("float", np.percentile(flat, p))
+
+    # ESS: compute per chain, average
+    num_chains: int = arr.shape[0]
+    ess_values: list[float] = []
+    for i in range(num_chains):
+        chain_samples: NDArray[np.float64] = arr[i, :]
+        ess_values.append(effective_sample_size(chain_samples))
+    ess_arr: NDArray[np.float64] = np.asarray(ess_values, dtype=np.float64)
+    stats["ess"] = cast("float", np.mean(ess_arr))
+
+    # R-hat: always include (NaN for single chain)
+    stats["r_hat"] = r_hat(arr)
+
+    return stats
+
+
 def summary(
     samples: dict[str, NDArray[np.float64]],
     percentiles: list[int] | None = None,
@@ -151,7 +184,9 @@ def summary(
     Parameters
     ----------
     samples : dict[str, ndarray]
-        Samples for each parameter. Shape: (num_chains, num_samples).
+        Samples for each parameter.
+        Scalars: shape (num_chains, num_samples).
+        Vectors: shape (num_chains, num_samples, size).
     percentiles : list[int], optional
         Percentiles to compute. Default: [5, 50, 95].
 
@@ -159,6 +194,7 @@ def summary(
     -------
     dict[str, dict[str, float]]
         Summary with keys: mean, std, percentiles, ess, r_hat per parameter.
+        Vector parameters are expanded to name[0], name[1], etc.
         r_hat is NaN for single chain.
     """
     if percentiles is None:
@@ -167,34 +203,25 @@ def summary(
     result: dict[str, dict[str, float]] = {}
 
     for name, arr in samples.items():
-        # Ensure 2D: (num_chains, num_samples)
+        # Handle different dimensions
         if arr.ndim == 1:
+            # 1D: single chain scalar -> (1, num_samples)
             arr = arr.reshape(1, -1)
+            result[name] = _summarize_2d(name, arr, percentiles)
 
-        flat: NDArray[np.float64] = arr.flatten()
+        elif arr.ndim == 2:
+            # 2D: multi-chain scalar -> (num_chains, num_samples)
+            result[name] = _summarize_2d(name, arr, percentiles)
 
-        stats: dict[str, float] = {
-            "mean": cast("float", np.mean(flat)),
-            "std": cast("float", np.std(flat, ddof=1)),
-        }
+        elif arr.ndim == 3:
+            # 3D: vector parameter -> (num_chains, num_samples, size)
+            size: int = arr.shape[2]
+            for i in range(size):
+                elem_name: str = f"{name}[{i}]"
+                elem_arr: NDArray[np.float64] = arr[:, :, i]
+                result[elem_name] = _summarize_2d(elem_name, elem_arr, percentiles)
 
-        # Compute percentiles
-        for p in percentiles:
-            key: str = f"{p}%"
-            stats[key] = cast("float", np.percentile(flat, p))
-
-        # ESS: compute per chain, average
-        num_chains: int = arr.shape[0]
-        ess_values: list[float] = []
-        for i in range(num_chains):
-            chain_samples: NDArray[np.float64] = arr[i, :]
-            ess_values.append(effective_sample_size(chain_samples))
-        ess_arr: NDArray[np.float64] = np.asarray(ess_values, dtype=np.float64)
-        stats["ess"] = cast("float", np.mean(ess_arr))
-
-        # R-hat: always include (NaN for single chain)
-        stats["r_hat"] = r_hat(arr)
-
-        result[name] = stats
+        else:
+            raise ValueError(f"Unsupported array dimension {arr.ndim} for {name}")
 
     return result

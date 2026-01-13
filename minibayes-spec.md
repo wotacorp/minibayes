@@ -1,4 +1,4 @@
-# minibayes Specification v0.2
+# minibayes Specification v0.4
 
 ## Overview
 
@@ -25,22 +25,27 @@
 - Supporting every distribution or sampler
 - Automatic differentiation (users provide gradients for HMC, or we use finite differences)
 - GPU acceleration
-- Hierarchical/multilevel priors (v1.0 limitation)
-
-### Scope Limitations (v1.0)
-
-**Priors must be independent.** This covers:
-- Linear / logistic / Poisson regression
-- Simple time series models
-- A/B testing and conversion models
-- Basic classification
-
-This does NOT cover:
-- Hierarchical/multilevel models (e.g., `mu ~ Normal(0, tau)` where `tau` is also a parameter)
-- Gaussian processes
+- Causal inference / do-calculus
+- Time series distributions (custom likelihood sufficient)
 - Deep Bayesian networks
 
-Users needing hierarchical models can use the direct `log_prob` API or switch to PyMC/NumPyro.
+### Scope Limitations (Current: v0.4)
+
+**Current version supports hierarchical models with:**
+- Vector parameters via `size=` argument
+- Conditional priors (distributions depending on other parameters)
+- The `p(...)` API for defining priors
+
+This covers:
+- Linear / logistic / Poisson regression
+- A/B testing and conversion models
+- Hierarchical/multilevel models (partial pooling)
+- Mixed effects models
+
+**Planned for future versions:**
+- v0.5: HMC/NUTS samplers for better performance
+- v0.6: MultivariateNormal, LKJ priors
+- v0.7: Gaussian processes
 
 ### Target Users
 
@@ -93,22 +98,27 @@ For full control, users can access `model.log_prob_unconstrained()` directly or 
 
 ### No Context-Dependent Magic
 
-Unlike NumPyro/Pyro, minibayes does NOT have a `sample()` primitive that behaves differently depending on context. Instead:
+Unlike NumPyro/Pyro, minibayes does NOT have a `sample()` primitive that behaves differently depending on context. Instead, we use a `p(...)` function that registers parameters:
 
 ```python
 # NumPyro: same code, different behavior depending on "handler"
 def model():
     x = numpyro.sample("x", dist.Normal(0, 1))  # Magic!
 
-# minibayes: explicit methods for each operation
-model = mb.Model(priors={"x": dist.Normal(0, 1)}, log_likelihood=...)
+# minibayes: explicit priors function with p(...) API
+def priors(p):
+    mu = p("mu", dist.Normal(0, 5))        # Returns sampled value
+    tau = p("tau", dist.HalfNormal(5))     # Can use in next line
+    theta = p("theta", dist.Normal(mu, tau), size=8)  # Vector param
+
+model = mb.Model(priors=priors, log_likelihood=log_likelihood)
 
 model.sample_prior()      # Draw from prior
 model.log_prior(params)   # Compute log prior
 model.log_prob(params, data)  # Compute log posterior
 ```
 
-Each operation is a separate, explicit method call. No surprises.
+The `p(...)` function registers parameters and returns their values. Execution order defines dependencies - no graph analysis needed.
 
 ---
 
@@ -833,44 +843,65 @@ class ModelSpecError(minibayesError):
 
 ## Development Roadmap
 
-### v0.1 — "It samples"
-- [ ] Core distributions: Normal, HalfNormal, Exponential, Beta, Gamma, Uniform
-- [ ] Transforms: Identity, Log, Logit
-- [ ] MetropolisHastings sampler
-- [ ] Direct log_prob interface
-- [ ] Basic InferenceResult
+### v0.1-v0.3 — COMPLETE (Foundation)
+- [x] Core distributions: Normal, HalfNormal, Exponential, Beta, Gamma, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson
+- [x] Transforms: Identity, Log, Logit, Affine (bounded)
+- [x] MetropolisHastings sampler
+- [x] AdaptiveMetropolis sampler (Haario et al.)
+- [x] Model class with priors + likelihood
+- [x] Automatic transforms from distribution support
+- [x] Multiple chains with parallel execution
+- [x] Diagnostics: ESS (FFT-based), R-hat
+- [x] InferenceResult with summary(), save/load (npz, json)
 
-### v0.2 — "It's usable"
-- [ ] Model class with priors + likelihood
-- [ ] Automatic transforms from distribution support
-- [ ] AdaptiveMetropolis sampler
-- [ ] Multiple chains
-- [ ] save/load to npz
+### v0.4 — COMPLETE (Hierarchical Models)
+**Use case: Multilevel/partial pooling models**
+- [x] `p(...)` API for defining priors with dependencies
+- [x] Vector parameters via `size=` argument
+- [x] Conditional priors (distributions depending on other params)
+- [x] 3D sample arrays for vector params: `(chains, samples, size)`
+- [x] Diagnostics and predictive sampling for vector params
 
-### v0.3 — "It's pleasant"
-- [ ] Diagnostics: ESS, R-hat
-- [ ] summary() method
-- [ ] JSON export
-- [ ] StudentT, LogNormal, Bernoulli, Poisson distributions
-- [ ] Bounded parameter transforms
+### v0.5 — "HMC & Scalability"
+**Use case: Any GLM with scalable inference**
+- [ ] HMC sampler with finite-difference gradients
+- [ ] NUTS sampler (No-U-Turn)
+- [ ] Binomial distribution
+- [ ] NegativeBinomial distribution
+- [ ] Categorical distribution
 
-### v0.4 — "It's fast"
-- [ ] HMC sampler (finite difference gradients)
-- [ ] Numba JIT for hot loops (optional dependency)
-- [ ] Warmup adaptation for HMC
+### v0.6 — "Multivariate"
+**Use case: Correlated parameters, covariance priors**
+- [ ] MvNormal distribution (multivariate normal)
+- [ ] LKJCholesky for correlation priors
+- [ ] Wishart/InverseWishart for covariance priors
 
-### v1.0 — "It's production-ready"
+### v0.7 — "Mixtures & Clustering"
+**Use case: Mixture models, zero-inflation**
+- [ ] Mixture class (weighted mixture of distributions)
+- [ ] NormalMixture convenience class
+- [ ] ZeroInflatedPoisson
+- [ ] ZeroInflatedNegativeBinomial
+- [ ] Dirichlet distribution (for mixture weights)
+
+### v0.8 — "Gaussian Processes"
+**Use case: Spatial/temporal smoothing, nonparametric regression**
+- [ ] GP kernels: RBF, Matern, Periodic, Linear
+- [ ] GaussianProcess distribution
+- [ ] Sparse GP approximations (for scalability)
+
+### v1.0 — "Production Ready"
 - [ ] Comprehensive numerical testing
-- [ ] Detailed error messages
-- [ ] Documentation
-- [ ] Benchmarks vs NumPyro
+- [ ] Full documentation with examples
+- [ ] Benchmarks vs NumPyro/PyMC
+- [ ] Warmup adaptation tuning (dual averaging)
 
-### Future (v2.0+)
-- Hierarchical priors (dependent prior structure)
-- NUTS sampler
-- User-provided gradients
+### Deferred (v2.0+ or Never)
+- Numba JIT (premature optimization)
+- Variational inference (NUTS sufficient for most cases)
+- Time series distributions (custom likelihood works)
+- JAX backend
 - Rust core with PyO3 bindings
-- Vector parameters
 
 ---
 

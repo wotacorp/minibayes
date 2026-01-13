@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 
 import minibayes as mb
 from minibayes import dist
+from minibayes.params import ParamContext
 from minibayes.predictive import (
     _get_param_dict,
     _get_total_samples,
@@ -199,8 +200,12 @@ class TestSamplePriorPredictive:
 
     def test_basic_usage(self) -> None:
         """Test basic prior predictive sampling."""
+
+        def priors(p: "ParamContext") -> None:
+            p("mu", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"mu": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -216,8 +221,12 @@ class TestSamplePriorPredictive:
 
     def test_reproducibility(self) -> None:
         """Test same seed gives same results."""
+
+        def priors(p: ParamContext) -> None:
+            p("mu", dist.Normal(0, 1))
+
         model = mb.Model(
-            priors={"mu": dist.Normal(0, 1)},
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 
@@ -233,11 +242,13 @@ class TestSamplePriorPredictive:
 
     def test_multiple_params(self) -> None:
         """Test with multiple parameters."""
+
+        def priors(p: ParamContext) -> None:
+            p("mu", dist.Normal(0, 10))
+            p("sigma", dist.HalfNormal(1))
+
         model = mb.Model(
-            priors={
-                "mu": dist.Normal(0, 10),
-                "sigma": dist.HalfNormal(1),
-            },
+            priors=priors,
             log_likelihood=lambda p, d: 0.0,
         )
 

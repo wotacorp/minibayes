@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from minibayes.exceptions import ModelSpecError, SamplingError, SamplingTimeoutError
-from minibayes.model import Model
+from minibayes.model import Model, StructuredParams
 from minibayes.results import InferenceResult
 from minibayes.samplers import AdaptiveMetropolis, MetropolisHastings
 from minibayes.samplers.base import Sampler
@@ -25,20 +25,20 @@ _SAMPLERS: dict[str, type[Sampler]] = {
 
 def _get_initial_state(
     model: Model,
-    initial: dict[str, float] | None,
+    initial: StructuredParams | None,
     data: object,
     rng: np.random.Generator,
 ) -> dict[str, float]:
     """
-    Get initial state in unconstrained space.
+    Get initial state in flat unconstrained space.
 
     Uses prior means if initial is None (deterministic, robust).
     Falls back to sampling from prior if means give invalid log_prob.
     """
     if initial is None:
         # Use prior means as default (deterministic, robust)
-        constrained: dict[str, float] = model.prior_means()
-        unconstrained: dict[str, float] = model.to_unconstrained(constrained)
+        constrained: StructuredParams = model.prior_means()
+        unconstrained: dict[str, float] = model.to_flat_unconstrained(constrained)
         lp: float = model.log_prob_unconstrained(unconstrained, data)
         if np.isfinite(lp):
             return unconstrained
@@ -46,7 +46,7 @@ def _get_initial_state(
         max_attempts: int = 10
         for _ in range(max_attempts):
             constrained = model.sample_prior(rng)
-            unconstrained = model.to_unconstrained(constrained)
+            unconstrained = model.to_flat_unconstrained(constrained)
             lp = model.log_prob_unconstrained(unconstrained, data)
             if np.isfinite(lp):
                 return unconstrained
@@ -54,7 +54,7 @@ def _get_initial_state(
     else:
         # Validate and transform provided initial values
         model.validate_params(initial)
-        return model.to_unconstrained(initial)
+        return model.to_flat_unconstrained(initial)
 
 
 def _run_chain(
@@ -64,7 +64,7 @@ def _run_chain(
     num_warmup: int,
     num_samples: int,
     rng: np.random.Generator,
-    param_names: list[str],
+    flat_param_names: list[str],
     chain_idx: int,
     num_chains: int,
     progress: bool,
@@ -74,7 +74,7 @@ def _run_chain(
     """
     Run a single MCMC chain.
 
-    Returns samples (unconstrained) and acceptance count.
+    Returns samples (flat unconstrained) and acceptance count.
 
     Raises
     ------
@@ -109,7 +109,7 @@ def _run_chain(
     sampler.post_warmup()
 
     # Sampling phase
-    samples: dict[str, list[float]] = {name: [] for name in param_names}
+    samples: dict[str, list[float]] = {name: [] for name in flat_param_names}
     accepts: int = 0
 
     with ProgressBar(
@@ -120,7 +120,7 @@ def _run_chain(
         for step_num in range(num_samples):
             state, accepted = sampler.step(state, log_prob_fn, rng)
             accepts += int(accepted)
-            for name in param_names:
+            for name in flat_param_names:
                 samples[name].append(state[name])
             pbar.update()
             if step_num % check_interval == 0:
@@ -133,7 +133,7 @@ def _run_chain_worker(
     args: tuple[
         "Model",
         object,
-        dict[str, float] | None,
+        StructuredParams | None,
         str,
         dict[str, object] | None,
         int,
@@ -161,7 +161,7 @@ def _run_chain_worker(
         num_warmup,
         num_samples,
         rng,
-        param_names,
+        flat_param_names,
         chain_idx,
         num_chains,
         timeout,
@@ -187,7 +187,7 @@ def _run_chain_worker(
         num_warmup,
         num_samples,
         rng,
-        param_names,
+        flat_param_names,
         chain_idx,
         num_chains,
         progress=False,
@@ -199,7 +199,7 @@ def _run_chain_worker(
 def sample(
     model: Model,
     data: object = None,
-    initial: dict[str, float] | None = None,
+    initial: StructuredParams | None = None,
     num_samples: int = 1000,
     num_warmup: int = 500,
     num_chains: int = 1,
@@ -248,7 +248,8 @@ def sample(
     Returns
     -------
     InferenceResult
-        Container with samples and diagnostics.
+        Container with samples and diagnostics. Vector parameters
+        have shape (num_chains, num_samples, size).
 
     Raises
     ------
@@ -268,7 +269,10 @@ def sample(
     rng: np.random.Generator = ensure_rng(seed)
 
     # Get parameter names from model
-    param_names: list[str] = model.param_names
+    # Samplers work with flat params, results are structured
+    flat_param_names: list[str] = model.flat_param_names
+    structured_param_names: list[str] = model.param_names
+    param_info = model.param_info
 
     # Build log_prob function
     def log_prob_fn(p: dict[str, float]) -> float:
@@ -291,7 +295,7 @@ def sample(
                 num_warmup,
                 num_samples,
                 child_rngs[i],
-                param_names,
+                flat_param_names,
                 i,
                 num_chains,
                 timeout,
@@ -329,7 +333,7 @@ def sample(
                 num_warmup,
                 num_samples,
                 chain_rng,
-                param_names,
+                flat_param_names,
                 chain_idx,
                 num_chains,
                 progress,
@@ -339,28 +343,46 @@ def sample(
 
         results = [run_one_chain(i) for i in range(num_chains)]
 
-    # Collect results
-    all_samples_unc: dict[str, list[list[float]]] = {name: [] for name in param_names}
+    # Collect flat samples
+    all_samples_flat: dict[str, list[list[float]]] = {
+        name: [] for name in flat_param_names
+    }
     acceptance_rates: list[float] = []
     for chain_samples, accepts in results:
-        for name in param_names:
-            all_samples_unc[name].append(chain_samples[name])
+        for name in flat_param_names:
+            all_samples_flat[name].append(chain_samples[name])
         acceptance_rates.append(accepts / num_samples)
 
-    # Convert to arrays - always (num_chains, num_samples) for consistency
-    samples_unconstrained: dict[str, NDArray[np.float64]] = {}
-    for name in param_names:
-        arr: NDArray[np.float64] = np.array(all_samples_unc[name], dtype=np.float64)
-        samples_unconstrained[name] = arr
+    # Convert flat samples to arrays
+    flat_samples_unc: dict[str, NDArray[np.float64]] = {}
+    for name in flat_param_names:
+        arr: NDArray[np.float64] = np.array(all_samples_flat[name], dtype=np.float64)
+        flat_samples_unc[name] = arr  # shape: (num_chains, num_samples)
 
-    # Transform to constrained space using inverse transform
+    # Reconstruct structured samples
+    samples_unconstrained: dict[str, NDArray[np.float64]] = {}
     samples_constrained: dict[str, NDArray[np.float64]] = {}
-    for name in param_names:
-        unc_samples: NDArray[np.float64] = samples_unconstrained[name]
+
+    for name in structured_param_names:
+        info = param_info[name]
         transform = model.transforms[name]
-        # Apply inverse transform to the entire array
-        constrained: NDArray[np.float64] = transform.inverse(unc_samples)
-        samples_constrained[name] = constrained
+
+        if info.is_vector:
+            # Vector param: gather theta[0], theta[1], ... into (chains, samples, size)
+            unc_list: list[NDArray[np.float64]] = []
+            for i in range(info.size):
+                flat_name = f"{name}[{i}]"
+                unc_list.append(flat_samples_unc[flat_name])
+            # Stack: each is (chains, samples), stack to (chains, samples, size)
+            unc_arr: NDArray[np.float64] = np.stack(unc_list, axis=-1)
+            samples_unconstrained[name] = unc_arr
+            # Transform: apply element-wise (works because transforms broadcast)
+            samples_constrained[name] = transform.inverse(unc_arr)
+        else:
+            # Scalar param: shape (chains, samples)
+            unc_arr = flat_samples_unc[name]
+            samples_unconstrained[name] = unc_arr
+            samples_constrained[name] = transform.inverse(unc_arr)
 
     # Build acceptance rate - always array for consistency
     acceptance_rate: NDArray[np.float64] = np.array(acceptance_rates, dtype=np.float64)
