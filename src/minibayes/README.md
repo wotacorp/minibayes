@@ -124,14 +124,37 @@ result = mb.sample(
 
 1. **Validate inputs**: Check sampler name is valid ("mh" or "adaptive_mh")
 2. **Set up RNG**: Create random generator from seed, spawn child RNGs for each chain
-3. **For each chain**:
+3. **Build parameter structure** (hierarchical models only):
+   - Run the `priors(p)` function once in SAMPLE mode to discover parameters
+   - Execution order defines dependency graph (parents must be registered before children)
+   - Store parameter metadata: distributions, sizes, transforms
+   - Build flat parameter names for sampler (e.g., `theta` → `theta[0]`, `theta[1]`, ...)
+4. **For each chain**:
    - Get initial state (use prior means if not provided, transform to unconstrained)
    - Create fresh sampler instance
    - **Warmup phase**: Run `num_warmup` steps with `sampler.warmup_step()` (adapts proposal)
    - **Finalize**: Call `sampler.post_warmup()` (freezes adaptation, frees memory)
    - **Sampling phase**: Run `num_samples` steps with `sampler.step()`, store samples
-4. **Transform samples**: Convert unconstrained samples back to constrained space
-5. **Return InferenceResult**: Package samples, acceptance rates, timing
+5. **Transform samples**: Convert unconstrained samples back to constrained space
+6. **Return InferenceResult**: Package samples, acceptance rates, timing
+
+#### Hierarchical Log Prior Computation
+
+For hierarchical models with conditional priors, log_prior is computed by re-executing the priors function in EVALUATE mode:
+
+```python
+def priors(p):
+    mu = p("mu", dist.Normal(0, 5))           # Step 1: look up mu, compute log_prob
+    tau = p("tau", dist.HalfNormal(5))        # Step 2: look up tau, compute log_prob
+    theta = p("theta", dist.Normal(mu, tau), size=8)  # Step 3: use mu,tau values in distribution
+```
+
+Each `p(name, dist)` call:
+1. Retrieves the current value from the params dict
+2. Creates the distribution with current hyperparameter values (for conditionals)
+3. Computes `dist.log_prob(value)` and accumulates the total
+
+This approach means no explicit dependency graph is needed—execution order naturally captures the hierarchy.
 
 ### Default Initialization
 
@@ -244,7 +267,7 @@ loaded = mb.InferenceResult.load("posterior.npz")
 
 1. **No magic**: Every operation is an explicit method call
 2. **Dict ordering preserved**: Parameter order is fixed at initialization
-3. **Priors are independent**: No hierarchical structure (v1.0 limitation)
+3. **Execution order as dependency graph**: Hierarchical priors use function execution order to define parent-child relationships
 4. **Inspectable**: Users can examine transforms, priors, computed probabilities
 
 ## References

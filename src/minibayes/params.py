@@ -30,15 +30,18 @@ class ParamInfo:
     distribution : Distribution
         Prior distribution for this parameter.
     is_vector : bool
-        True if this is a vector parameter (size > 1).
+        True if this is a vector parameter (size > 1) or matrix parameter.
     size : int
-        Number of elements (1 for scalar, >1 for vector).
+        Total number of elements (1 for scalar, >1 for vector/matrix).
+    shape : tuple[int, ...] or None
+        Shape of matrix parameters. None for scalar/vector parameters.
     """
 
     name: str
     distribution: Distribution
     is_vector: bool
     size: int
+    shape: tuple[int, ...] | None = None
 
 
 class ParamContext:
@@ -74,7 +77,7 @@ class ParamContext:
     >>> ctx.values  # {'mu': ..., 'sigma': ...}
     >>>
     >>> # Evaluation mode
-    >>> ctx = ParamContext(mode=ParamMode.EVALUATE, values={'mu': 1.0, 'sigma': 0.5})
+    >>> ctx = ParamContext(mode=ParamMode.EVALUATE, values={"mu": 1.0, "sigma": 0.5})
     >>> priors(ctx)
     >>> ctx.log_prob  # sum of log_prob for all parameters
     """
@@ -92,9 +95,7 @@ class ParamContext:
 
         if mode == ParamMode.EVALUATE:
             # Fast path: don't copy values (we only read), skip RNG
-            self._values: dict[str, float | NDArray[np.float64]] = (
-                values if values is not None else {}
-            )
+            self._values: dict[str, float | NDArray[np.float64]] = values if values is not None else {}
             self._rng: np.random.Generator | None = None
         else:
             # SAMPLE mode: need RNG
@@ -106,6 +107,7 @@ class ParamContext:
         name: str,
         dist: Distribution,
         size: int | None = None,
+        shape: tuple[int, ...] | None = None,
     ) -> float | NDArray[np.float64]:
         """
         Register a parameter and return its value.
@@ -118,6 +120,10 @@ class ParamContext:
             Prior distribution for this parameter.
         size : int, optional
             If provided, create a vector parameter with `size` IID draws.
+        shape : tuple[int, ...], optional
+            For matrix-valued distributions (e.g., LKJCholesky). If provided,
+            a single sample is drawn and stored with this shape.
+            Mutually exclusive with `size`.
 
         Returns
         -------
@@ -128,9 +134,14 @@ class ParamContext:
         ------
         ModelSpecError
             If parameter name is already registered.
+            If both size and shape are provided.
         KeyError
             If in EVALUATE mode and parameter value is missing.
         """
+        # Validate mutually exclusive arguments
+        if size is not None and shape is not None:
+            raise ModelSpecError("Cannot use both size and shape")
+
         # EVALUATE mode: fast path - skip metadata tracking
         if self._mode == ParamMode.EVALUATE:
             value: float | NDArray[np.float64] = self._values[name]
@@ -145,31 +156,51 @@ class ParamContext:
         if name in self._param_info:
             raise ModelSpecError(f"Parameter '{name}' already registered")
 
-        is_vector: bool = size is not None
-        actual_size: int = size if size is not None else 1
+        # Determine parameter type and size
+        if shape is not None:
+            # Matrix parameter: single sample with given shape
+            is_vector = True
+            actual_size = int(np.prod(shape))
+            param_shape: tuple[int, ...] | None = shape
+        elif size is not None:
+            # Vector parameter: IID draws
+            is_vector = True
+            actual_size = size
+            param_shape = None
+        else:
+            # Scalar parameter
+            is_vector = False
+            actual_size = 1
+            param_shape = None
 
         self._param_info[name] = ParamInfo(
             name=name,
             distribution=dist,
             is_vector=is_vector,
             size=actual_size,
+            shape=param_shape,
         )
         self._order.append(name)
-        return self._sample_param(name, dist, size)
+        return self._sample_param(name, dist, size, shape)
 
     def _sample_param(
         self,
         name: str,
         dist: Distribution,
         size: int | None,
+        shape: tuple[int, ...] | None = None,
     ) -> float | NDArray[np.float64]:
         """Draw from distribution and store value."""
-        if size is not None:
+        if shape is not None:
+            # Matrix parameter: single sample from joint distribution
+            sample_raw = dist.sample(rng=self._rng)
+            value: NDArray[np.float64] = np.asarray(sample_raw, dtype=np.float64)
+            self._values[name] = value
+            return value
+        elif size is not None:
             # Vector parameter: sample size IID draws
-            samples: list[float] = [
-                float(dist.sample(rng=self._rng)) for _ in range(size)
-            ]
-            value: NDArray[np.float64] = np.array(samples, dtype=np.float64)
+            samples: list[float] = [float(dist.sample(rng=self._rng)) for _ in range(size)]
+            value = np.array(samples, dtype=np.float64)
             self._values[name] = value
             return value
         else:

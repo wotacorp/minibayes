@@ -9,7 +9,9 @@ from minibayes.distributions.gamma import Gamma
 from minibayes.distributions.half_normal import HalfNormal
 from minibayes.distributions.inverse_gamma import InverseGamma
 from minibayes.distributions.laplace import Laplace
+from minibayes.distributions.lkj_cholesky import LKJCholesky
 from minibayes.distributions.lognormal import LogNormal
+from minibayes.distributions.multivariate_normal import MultivariateNormal
 from minibayes.distributions.normal import Normal
 from minibayes.distributions.poisson import Poisson
 from minibayes.distributions.student_t import StudentT
@@ -24,6 +26,9 @@ __all__ = [
     "StudentT",
     "Cauchy",
     "Laplace",
+    # Continuous - REAL support (multivariate)
+    "MultivariateNormal",
+    "LKJCholesky",
     # Continuous - POSITIVE support
     "HalfNormal",
     "Exponential",
