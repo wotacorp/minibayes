@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -40,6 +40,9 @@ class InferenceResult:
         Name of sampler used.
     elapsed_time : float
         Total sampling time in seconds.
+    derived : dict[str, ndarray]
+        User-added derived parameters (e.g., correlations from Cholesky factors).
+        Shape: (num_chains, num_samples) or (num_chains, num_samples, ...).
     """
 
     samples: dict[str, NDArray[np.float64]]
@@ -50,6 +53,7 @@ class InferenceResult:
     num_chains: int
     sampler: str
     elapsed_time: float
+    derived: dict[str, NDArray[np.float64]] = field(default_factory=dict)
 
     def summary(
         self,
@@ -73,12 +77,54 @@ class InferenceResult:
         """
         from minibayes.diagnostics import summary as compute_summary
 
+        # Merge samples and derived
+        all_samples: dict[str, NDArray[np.float64]] = {**self.samples, **self.derived}
+
         if params is not None:
-            filtered: dict[str, NDArray[np.float64]] = {k: v for k, v in self.samples.items() if k in params}
+            filtered: dict[str, NDArray[np.float64]] = {
+                k: v for k, v in all_samples.items() if k in params
+            }
         else:
-            filtered = self.samples
+            filtered = all_samples
 
         return compute_summary(filtered, percentiles)
+
+    def add_derived(self, name: str, samples: NDArray[np.float64]) -> None:
+        """
+        Add a derived parameter computed from existing samples.
+
+        Parameters
+        ----------
+        name : str
+            Name for the derived parameter.
+        samples : ndarray
+            Samples array with shape (num_chains, num_samples) or
+            (num_chains, num_samples, ...) for vector/matrix quantities.
+
+        Raises
+        ------
+        ValueError
+            If name conflicts with existing sample or shape is invalid.
+
+        Examples
+        --------
+        >>> # Extract correlation from Cholesky factor
+        >>> L_samples = result.samples["L_corr"]
+        >>> rho_samples = L_samples[:, :, 1, 0]
+        >>> result.add_derived("rho", rho_samples)
+        >>> viz.plot_density(result, params=["rho"])
+        """
+        if name in self.samples:
+            raise ValueError(f"'{name}' already exists in samples")
+        if name in self.derived:
+            raise ValueError(f"'{name}' already exists in derived")
+        expected_prefix: tuple[int, int] = (self.num_chains, self.num_samples)
+        if samples.shape[:2] != expected_prefix:
+            raise ValueError(
+                f"Shape must be ({self.num_chains}, {self.num_samples}, ...), "
+                f"got {samples.shape}"
+            )
+        self.derived[name] = samples
 
     def predict(
         self,
@@ -216,6 +262,15 @@ class InferenceResult:
                 arr = np.asarray(v, dtype=np.float64)
                 samples_unconstrained[k] = arr
 
+        # Extract derived samples (optional, may not exist in older files)
+        derived_raw: object = data.get("derived", {})
+        derived: dict[str, NDArray[np.float64]] = {}
+        if isinstance(derived_raw, dict):
+            for k, v in derived_raw.items():
+                if isinstance(k, str):
+                    arr = np.asarray(v, dtype=np.float64)
+                    derived[k] = arr
+
         # Extract acceptance rate as array
         acc_rate_raw: object = data.get("acceptance_rate", [0.0])
         acceptance_rate: NDArray[np.float64] = np.atleast_1d(np.asarray(acc_rate_raw, dtype=np.float64))
@@ -245,4 +300,5 @@ class InferenceResult:
             num_chains=num_chains,
             sampler=sampler,
             elapsed_time=elapsed_time,
+            derived=derived,
         )

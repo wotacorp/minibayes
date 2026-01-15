@@ -174,10 +174,10 @@ class LKJCholesky(Distribution):
         This implements the algorithm from Lewandowski, Kurowicka, Joe (2009).
         """
         d = self._dim
-        L: NDArray[np.float64] = np.zeros((d, d), dtype=np.float64)
+        chol: NDArray[np.float64] = np.zeros((d, d), dtype=np.float64)
 
         # First element is always 1
-        L[0, 0] = 1.0
+        chol[0, 0] = 1.0
 
         for i in range(1, d):
             # Sample partial correlations from Beta distribution
@@ -197,15 +197,15 @@ class LKJCholesky(Distribution):
                     partial_corr = 2.0 * float(rng.random()) - 1.0
 
                 # Convert partial correlation to Cholesky element
-                L_ij: float = partial_corr * float(np.sqrt(remaining))
-                L[i, j] = L_ij
-                remaining -= L_ij * L_ij
+                chol_ij: float = partial_corr * float(np.sqrt(remaining))
+                chol[i, j] = chol_ij
+                remaining -= chol_ij * chol_ij
                 remaining = max(remaining, 1e-10)
 
             # Diagonal element
-            L[i, i] = float(np.sqrt(remaining))
+            chol[i, i] = float(np.sqrt(remaining))
 
-        return L
+        return chol
 
     def default_transform(self) -> Transform:
         """

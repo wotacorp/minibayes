@@ -182,6 +182,9 @@ Before committing:
 | `model.py` (matrix params) | ✓ Done | Matrix parameter support in flatten/unflatten |
 | `inference.py` (matrix params) | ✓ Done | Matrix parameter reconstruction in sample results |
 
+| **v0.4.2 Derived Params** | | |
+| `results.py` (derived) | ✓ Done | add_derived() for computed params (e.g., correlation from Cholesky) |
+
 | **v0.5 Gradient-Free** | | |
 | `samplers/ensemble.py` | ✓ Done | Affine-invariant ensemble sampler (emcee-style) |
 

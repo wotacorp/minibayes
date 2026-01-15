@@ -37,6 +37,8 @@ def save_npz(result: InferenceResult, path: str) -> None:
         sample_arrays[f"samples_{name}"] = arr
     for name, arr in result.samples_unconstrained.items():
         sample_arrays[f"unconstrained_{name}"] = arr
+    for name, arr in result.derived.items():
+        sample_arrays[f"derived_{name}"] = arr
 
     # np.savez_compressed kwargs type is imprecise in numpy stubs
     np.savez_compressed(
@@ -70,6 +72,7 @@ def load_npz(path: str) -> InferenceResult:
     try:
         samples: dict[str, NDArray[np.float64]] = {}
         samples_unconstrained: dict[str, NDArray[np.float64]] = {}
+        derived: dict[str, NDArray[np.float64]] = {}
 
         file_keys: list[str] = list(npz_data.files)  # type: ignore[misc]
         for key in file_keys:
@@ -79,6 +82,9 @@ def load_npz(path: str) -> InferenceResult:
             elif key.startswith("unconstrained_"):
                 name = key[len("unconstrained_") :]
                 samples_unconstrained[name] = cast("NDArray[np.float64]", npz_data[key])  # type: ignore[misc]
+            elif key.startswith("derived_"):
+                name = key[len("derived_") :]
+                derived[name] = cast("NDArray[np.float64]", npz_data[key])  # type: ignore[misc]
 
         acceptance_rate: NDArray[np.float64] = np.atleast_1d(
             cast("NDArray[np.float64]", npz_data["acceptance_rate"])  # type: ignore[misc]
@@ -93,6 +99,7 @@ def load_npz(path: str) -> InferenceResult:
             num_chains=int(cast("np.int64", npz_data["num_chains"])),  # type: ignore[misc]
             sampler=str(cast("np.str_", npz_data["sampler"])),  # type: ignore[misc]
             elapsed_time=float(cast("np.float64", npz_data["elapsed_time"])),  # type: ignore[misc]
+            derived=derived,
         )
     finally:
         npz_data.close()  # type: ignore[misc]
@@ -124,9 +131,14 @@ def to_json(result: InferenceResult) -> dict[str, object]:
     for k, v in result.samples_unconstrained.items():
         samples_unc_dict[k] = cast("list[float]", v.tolist())
 
+    derived_dict: dict[str, list[float]] = {}
+    for k, v in result.derived.items():
+        derived_dict[k] = cast("list[float]", v.tolist())
+
     return {
         "samples": samples_dict,
         "samples_unconstrained": samples_unc_dict,
+        "derived": derived_dict,
         "acceptance_rate": acc_rate,
         "num_samples": result.num_samples,
         "num_warmup": result.num_warmup,

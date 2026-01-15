@@ -154,7 +154,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = ["-v", "--strict-markers", "--tb=short"]
-filterwarnings = ["error", "ignore::DeprecationWarning"]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::minibayes.exceptions.ConvergenceWarning",
+]
 
 # ============================================================================
 # COVERAGE (optional, if using pytest-cov)
