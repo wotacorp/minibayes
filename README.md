@@ -12,7 +12,7 @@ pip install minibayes
 
 - **Distributions**: Normal, HalfNormal, Exponential, Gamma, Beta, Uniform
 - **Transforms**: Automatic parameter transforms (Log, Logit, Affine) based on distribution support
-- **Samplers**: Metropolis-Hastings, Adaptive Metropolis with covariance tuning
+- **Samplers**: Metropolis-Hastings, Adaptive Metropolis, Ensemble (emcee-style)
 - **Diagnostics**: Effective Sample Size (ESS), Gelman-Rubin R-hat
 - **Export**: Save/load results in NPZ or JSON format
 

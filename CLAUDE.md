@@ -183,9 +183,9 @@ Before committing:
 | `inference.py` (matrix params) | ✓ Done | Matrix parameter reconstruction in sample results |
 
 | **v0.5 Gradient-Free** | | |
-| `samplers/ensemble.py` | Planned | Affine-invariant ensemble sampler (emcee-style) |
+| `samplers/ensemble.py` | ✓ Done | Affine-invariant ensemble sampler (emcee-style) |
 
 | **Deferred** | | |
 | HMC/NUTS | Not planned | See minibayes-spec.md "Design Decisions" for rationale |
 
-**v0.4.1 complete.** Next: v0.5 (gradient-free samplers for better mixing).
+**v0.5 complete.** Ensemble sampler implemented with unified stateful interface.

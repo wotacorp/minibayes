@@ -177,6 +177,7 @@ This provides deterministic, robust initialization without needing manual tuning
 |---------|-------------|-------------|
 | `"adaptive_mh"` | Adaptive Metropolis with covariance tuning | Default, learns correlations |
 | `"mh"` | Random-walk Metropolis-Hastings | Simple models, known proposal scale |
+| `"ensemble"` | Affine-invariant ensemble sampler (emcee-style) | Multimodal, no tuning needed |
 
 ```python
 # Custom proposal scale for MH
@@ -185,6 +186,10 @@ result = mb.sample(model, data, sampler="mh", sampler_kwargs={"proposal_scale": 
 # Per-parameter scales
 result = mb.sample(model, data, sampler="mh",
     sampler_kwargs={"proposal_scale": {"mu": 0.5, "sigma": 0.1}})
+
+# Ensemble sampler: num_chains = num_walkers (use >= 2 * ndim)
+result = mb.sample(model, data, sampler="ensemble", num_chains=24,
+    sampler_kwargs={"stretch_scale": 2.0})  # stretch_scale is optional (default=2.0)
 ```
 
 ### Parallel Sampling

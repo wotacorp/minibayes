@@ -24,6 +24,7 @@ class MetropolisHastings(Sampler):
         self,
         proposal_scale: float | dict[str, float] = 1.0,
     ) -> None:
+        super().__init__()
         if isinstance(proposal_scale, dict):
             for name, scale in proposal_scale.items():
                 if scale <= 0:
