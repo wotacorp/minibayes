@@ -108,6 +108,24 @@ class TestPlotDensity:
 
         plt.close(fig)
 
+    def test_with_derived_param(self, mock_result):
+        """Test plot_density with derived parameter."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_density
+
+        # Add derived parameter
+        derived = mock_result.samples["mu"] + mock_result.samples["sigma"]
+        mock_result.add_derived("mu_plus_sigma", derived)
+
+        # Should be able to plot derived param
+        fig = plot_density(mock_result, params=["mu_plus_sigma"])
+        assert fig is not None
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+
 
 class TestPlotSamples:
     """Test plot_samples function."""

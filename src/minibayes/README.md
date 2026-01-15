@@ -245,6 +245,23 @@ summary = result.summary()
 # {'mu': {'mean': 2.01, 'std': 0.05, '5%': 1.93, '50%': 2.01, '95%': 2.09, 'ess': 890.2, 'r_hat': 1.001}, ...}
 ```
 
+### Derived Parameters
+
+Add computed quantities to use with visualization and diagnostics:
+
+```python
+# Extract correlation from Cholesky factor
+L_samples = result.samples["L_corr"]
+rho_samples = L_samples[:, :, 1, 0]  # shape (num_chains, num_samples)
+result.add_derived("rho", rho_samples)
+
+# Now works with all viz functions and summary
+viz.plot_density(result, params=["rho"])
+print(result.summary(params=["rho"]))
+```
+
+Derived parameters are automatically included in save/load operations.
+
 ## Diagnostics
 
 | Diagnostic | Good Value | Concern |

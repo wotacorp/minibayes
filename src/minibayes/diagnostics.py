@@ -1,9 +1,12 @@
 """Convergence diagnostics for MCMC."""
 
+import warnings
 from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
+
+from minibayes.exceptions import ConvergenceWarning
 
 
 def _next_power_of_two(n: int) -> int:
@@ -174,6 +177,24 @@ def _summarize_2d(
     return stats
 
 
+def _warn_if_non_converged(name: str, stats: dict[str, float]) -> None:
+    """Emit ConvergenceWarning if diagnostics suggest non-convergence."""
+    r_hat_val: float = stats["r_hat"]
+    if r_hat_val > 1.01 and not np.isnan(r_hat_val):
+        warnings.warn(
+            f"R-hat for {name} is {r_hat_val:.3f} (>1.01), suggesting non-convergence",
+            ConvergenceWarning,
+            stacklevel=4,
+        )
+    ess_val: float = stats["ess"]
+    if ess_val < 100:
+        warnings.warn(
+            f"ESS for {name} is {ess_val:.1f} (<100), samples may be unreliable",
+            ConvergenceWarning,
+            stacklevel=4,
+        )
+
+
 def summary(
     samples: dict[str, NDArray[np.float64]],
     percentiles: list[int] | None = None,
@@ -208,10 +229,12 @@ def summary(
             # 1D: single chain scalar -> (1, num_samples)
             arr = arr.reshape(1, -1)
             result[name] = _summarize_2d(name, arr, percentiles)
+            _warn_if_non_converged(name, result[name])
 
         elif arr.ndim == 2:
             # 2D: multi-chain scalar -> (num_chains, num_samples)
             result[name] = _summarize_2d(name, arr, percentiles)
+            _warn_if_non_converged(name, result[name])
 
         elif arr.ndim == 3:
             # 3D: vector parameter -> (num_chains, num_samples, size)
@@ -220,6 +243,7 @@ def summary(
                 elem_name: str = f"{name}[{i}]"
                 elem_arr: NDArray[np.float64] = arr[:, :, i]
                 result[elem_name] = _summarize_2d(elem_name, elem_arr, percentiles)
+                _warn_if_non_converged(elem_name, result[elem_name])
 
         else:
             raise ValueError(f"Unsupported array dimension {arr.ndim} for {name}")

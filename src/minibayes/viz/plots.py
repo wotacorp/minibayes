@@ -30,10 +30,19 @@ def _style_axes(ax: Axes) -> None:
     ax.set_facecolor(str(STYLE_PARAMS.get("axes.facecolor", "#FFFFFF")))
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#CCCCCC")
-    ax.spines["bottom"].set_color("#CCCCCC")
-    ax.tick_params(colors="#4A4A4A", labelsize=9)
-    ax.grid(True, color="#F0F0F0", linewidth=0.6, alpha=1.0)
+    edge_color: str = str(STYLE_PARAMS.get("axes.edgecolor", "#CCCCCC"))
+    ax.spines["left"].set_color(edge_color)
+    ax.spines["bottom"].set_color(edge_color)
+    tick_color: str = str(STYLE_PARAMS.get("xtick.color", "#4A4A4A"))
+    tick_size_val: object = STYLE_PARAMS.get("xtick.labelsize", 9)
+    tick_size: int = int(tick_size_val) if isinstance(tick_size_val, (int, float)) else 9
+    ax.tick_params(colors=tick_color, labelsize=tick_size)
+    grid_color: str = str(STYLE_PARAMS.get("grid.color", "#F0F0F0"))
+    grid_width_val: object = STYLE_PARAMS.get("grid.linewidth", 0.6)
+    grid_width: float = float(grid_width_val) if isinstance(grid_width_val, (int, float)) else 0.6
+    grid_alpha_val: object = STYLE_PARAMS.get("grid.alpha", 1.0)
+    grid_alpha: float = float(grid_alpha_val) if isinstance(grid_alpha_val, (int, float)) else 1.0
+    ax.grid(True, color=grid_color, linewidth=grid_width, alpha=grid_alpha)
     ax.set_axisbelow(True)
 
 
@@ -73,10 +82,19 @@ def plot_density(
 
     # Create figure if needed
     if ax is None:
-        fig, axes_arr = plt.subplots(1, n_params, figsize=(4 * n_params, 3), squeeze=False)
+        # Max 3 subplots per row
+        max_cols = 3
+        n_cols = min(n_params, max_cols)
+        n_rows = (n_params + max_cols - 1) // max_cols  # ceil division
+        fig, axes_arr = plt.subplots(
+            n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows), squeeze=False
+        )
         axes_flat: NDArray[np.object_] = axes_arr.flatten()
         axes_list: list[Axes] = [cast("Axes", a) for a in axes_flat]
         fig_out: Figure = cast("Figure", fig)
+        # Hide unused axes
+        for idx in range(n_params, len(axes_list)):
+            axes_list[idx].set_visible(False)
     else:
         fig_out = cast("Figure", ax.figure)
         axes_list = [ax]

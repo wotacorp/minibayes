@@ -30,13 +30,13 @@ class CorrCholeskyTransform(Transform):
         self._dim = dim
         self._n_offdiag = dim * (dim - 1) // 2
 
-    def forward(self, L: NDArray[np.float64]) -> NDArray[np.float64]:
+    def forward(self, chol: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Transform from constrained Cholesky to unconstrained vector.
 
         Parameters
         ----------
-        L : ndarray, shape (dim, dim)
+        chol : ndarray, shape (dim, dim)
             Lower triangular Cholesky factor of correlation matrix.
 
         Returns
@@ -44,7 +44,7 @@ class CorrCholeskyTransform(Transform):
         ndarray, shape (n_offdiag,)
             Unconstrained vector (arctanh of normalized off-diagonals).
         """
-        arr: NDArray[np.float64] = np.asarray(L, dtype=np.float64)
+        arr: NDArray[np.float64] = np.asarray(chol, dtype=np.float64)
         y: NDArray[np.float64] = np.zeros(self._n_offdiag, dtype=np.float64)
 
         idx = 0
@@ -81,10 +81,10 @@ class CorrCholeskyTransform(Transform):
             Lower triangular Cholesky factor of correlation matrix.
         """
         arr: NDArray[np.float64] = np.asarray(y, dtype=np.float64)
-        L: NDArray[np.float64] = np.zeros((self._dim, self._dim), dtype=np.float64)
+        chol: NDArray[np.float64] = np.zeros((self._dim, self._dim), dtype=np.float64)
 
-        # First row: L[0,0] = 1 (unit diagonal for correlation)
-        L[0, 0] = 1.0
+        # First row: chol[0,0] = 1 (unit diagonal for correlation)
+        chol[0, 0] = 1.0
 
         idx = 0
         for i in range(1, self._dim):
@@ -97,18 +97,18 @@ class CorrCholeskyTransform(Transform):
                 if remaining <= 0:
                     remaining = 1e-10
 
-                L_ij: float = z * float(np.sqrt(remaining))
-                L[i, j] = L_ij
-                row_sum_sq += L_ij * L_ij
+                chol_ij: float = z * float(np.sqrt(remaining))
+                chol[i, j] = chol_ij
+                row_sum_sq += chol_ij * chol_ij
                 idx += 1
 
             # Diagonal element from unit row norm constraint
             diag_sq: float = 1.0 - row_sum_sq
-            L[i, i] = float(np.sqrt(max(diag_sq, 1e-10)))
+            chol[i, i] = float(np.sqrt(max(diag_sq, 1e-10)))
 
-        return L
+        return chol
 
-    def log_det_jacobian(self, L: NDArray[np.float64]) -> NDArray[np.float64]:
+    def log_det_jacobian(self, chol: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Log absolute determinant of Jacobian of inverse transform.
 
@@ -119,7 +119,7 @@ class CorrCholeskyTransform(Transform):
 
         Parameters
         ----------
-        L : ndarray, shape (dim, dim)
+        chol : ndarray, shape (dim, dim)
             Lower triangular Cholesky factor in constrained space.
 
         Returns
@@ -127,7 +127,7 @@ class CorrCholeskyTransform(Transform):
         ndarray
             Log |dL/dy| as 0-d array.
         """
-        arr: NDArray[np.float64] = np.asarray(L, dtype=np.float64)
+        arr: NDArray[np.float64] = np.asarray(chol, dtype=np.float64)
         log_det: float = 0.0
 
         for i in range(1, self._dim):

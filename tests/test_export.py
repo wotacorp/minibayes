@@ -163,3 +163,125 @@ class TestExport:
         assert "mean" in s["alpha"]
         assert "std" in s["alpha"]
         assert "ess" in s["alpha"]
+
+
+class TestDerivedParameters:
+    """Tests for derived parameters functionality."""
+
+    def test_add_derived_basic(self) -> None:
+        """Test adding a derived parameter."""
+        result = _make_result()
+        # Create derived param with matching shape (1, 100)
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] + result.samples["beta"]
+        result.add_derived("sum_ab", derived_samples)
+
+        assert "sum_ab" in result.derived
+        np.testing.assert_array_equal(result.derived["sum_ab"], derived_samples)
+
+    def test_add_derived_multichain(self) -> None:
+        """Test adding derived parameter with multiple chains."""
+        result = _make_multichain_result()
+        # Create derived param with matching shape (4, 100)
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] * 2
+        result.add_derived("double_alpha", derived_samples)
+
+        assert result.derived["double_alpha"].shape == (4, 100)
+
+    def test_add_derived_rejects_existing_sample_name(self) -> None:
+        """Test that add_derived rejects names that exist in samples."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"].copy()
+
+        import pytest
+
+        with pytest.raises(ValueError, match="already exists in samples"):
+            result.add_derived("alpha", derived_samples)
+
+    def test_add_derived_rejects_duplicate_derived_name(self) -> None:
+        """Test that add_derived rejects duplicate derived names."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"].copy()
+        result.add_derived("rho", derived_samples)
+
+        import pytest
+
+        with pytest.raises(ValueError, match="already exists in derived"):
+            result.add_derived("rho", derived_samples)
+
+    def test_add_derived_rejects_wrong_shape(self) -> None:
+        """Test that add_derived rejects wrong shape."""
+        result = _make_result()
+        # Wrong shape: (2, 50) instead of (1, 100)
+        wrong_shape: NDArray[np.float64] = np.random.default_rng(0).standard_normal((2, 50))
+
+        import pytest
+
+        with pytest.raises(ValueError, match="Shape must be"):
+            result.add_derived("bad", wrong_shape)
+
+    def test_summary_includes_derived(self) -> None:
+        """Test that summary() includes derived parameters."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] * 2
+        result.add_derived("double_alpha", derived_samples)
+
+        s = result.summary()
+
+        assert "alpha" in s
+        assert "double_alpha" in s
+        assert "mean" in s["double_alpha"]
+        assert "ess" in s["double_alpha"]
+
+    def test_summary_filter_derived(self) -> None:
+        """Test that summary() can filter to just derived params."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] + result.samples["beta"]
+        result.add_derived("sum_ab", derived_samples)
+
+        s = result.summary(params=["sum_ab"])
+
+        assert "sum_ab" in s
+        assert "alpha" not in s
+
+    def test_save_load_npz_with_derived(self) -> None:
+        """Test save/load NPZ preserves derived parameters."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] * 3
+        result.add_derived("triple_alpha", derived_samples)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "result.npz"
+            save_npz(result, str(path))
+            loaded = load_npz(str(path))
+
+            assert "triple_alpha" in loaded.derived
+            np.testing.assert_array_almost_equal(
+                loaded.derived["triple_alpha"], result.derived["triple_alpha"]
+            )
+
+    def test_save_load_json_with_derived(self) -> None:
+        """Test save/load JSON preserves derived parameters."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"] - result.samples["beta"]
+        result.add_derived("diff_ab", derived_samples)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "result.json"
+            result.save(str(path), format="json")
+            loaded = InferenceResult.load(str(path))
+
+            assert "diff_ab" in loaded.derived
+            np.testing.assert_array_almost_equal(
+                loaded.derived["diff_ab"], result.derived["diff_ab"]
+            )
+
+    def test_to_json_includes_derived(self) -> None:
+        """Test to_json includes derived parameters."""
+        result = _make_result()
+        derived_samples: NDArray[np.float64] = result.samples["alpha"].copy()
+        result.add_derived("rho", derived_samples)
+
+        d = to_json(result)
+
+        assert "derived" in d
+        assert "rho" in d["derived"]

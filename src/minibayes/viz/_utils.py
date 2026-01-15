@@ -34,10 +34,10 @@ def extract_samples(
     # Import here to avoid circular imports
     from minibayes.results import InferenceResult
 
-    # Extract samples dict
+    # Extract samples dict (merge samples + derived for InferenceResult)
     samples: dict[str, NDArray[np.float64]]
     if isinstance(data, InferenceResult):
-        samples = data.samples
+        samples = {**data.samples, **data.derived}
     elif isinstance(data, dict):
         samples = data
     else:
@@ -78,32 +78,6 @@ def ensure_2d(arr: NDArray[np.float64]) -> NDArray[np.float64]:
         return arr
     else:
         raise ValueError(f"Expected 1D or 2D array, got {arr.ndim}D")
-
-
-def get_param_names(
-    data: InferenceResult | dict[str, NDArray[np.float64]] | NDArray[np.float64],
-) -> list[str]:
-    """
-    Get parameter names from data.
-
-    Parameters
-    ----------
-    data : InferenceResult, dict, or ndarray
-        Input data.
-
-    Returns
-    -------
-    list[str]
-        Parameter names.
-    """
-    from minibayes.results import InferenceResult
-
-    if isinstance(data, InferenceResult):
-        return list(data.samples.keys())
-    elif isinstance(data, dict):
-        return list(data.keys())
-    else:
-        return ["param"]
 
 
 def flatten_samples(arr: NDArray[np.float64]) -> NDArray[np.float64]:
