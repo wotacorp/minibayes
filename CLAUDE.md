@@ -157,8 +157,8 @@ Before committing:
 |-----------|--------|-------|
 | **v0.1 Foundation** | | |
 | `utils/numerical.py` | ✓ Done | `ensure_rng`, `check_finite`, `log_sum_exp` |
-| `transforms/` | ✓ Done | Identity, Log, Logit, Affine + `default_transform()` |
-| `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson |
+| `transforms/` | ✓ Done | Identity, Log, Logit, Affine, CorrCholesky + `default_transform()` |
+| `distributions/` | ✓ Done | Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson, MultivariateNormal, LKJCholesky |
 | **v0.2 Core** | | |
 | `model.py` | ✓ Done | Model class with transforms, Jacobian |
 | `samplers/mh.py` | ✓ Done | MetropolisHastings with Gaussian proposals |
@@ -175,4 +175,11 @@ Before committing:
 | `predictive.py` (vectors) | ✓ Done | Handle vector params in posterior predictive |
 | `inference.py` (vectors) | ✓ Done | Structured results with 3D sample arrays |
 
-**v0.4 complete.** Next: v0.5 (HMC sampler, NUTS).
+| **v0.4.1 LKJ/Matrix** | | |
+| `distributions/lkj_cholesky.py` | ✓ Done | LKJCholesky prior for correlation matrices |
+| `transforms/corr_cholesky.py` | ✓ Done | CorrCholeskyTransform for Cholesky factors |
+| `params.py` (shape param) | ✓ Done | Added `shape=` parameter for matrix-valued distributions |
+| `model.py` (matrix params) | ✓ Done | Matrix parameter support in flatten/unflatten |
+| `inference.py` (matrix params) | ✓ Done | Matrix parameter reconstruction in sample results |
+
+**v0.4.1 complete.** Next: v0.5 (HMC sampler, NUTS).

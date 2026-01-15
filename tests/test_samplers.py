@@ -219,4 +219,3 @@ class TestAdaptiveMetropolis:
 
         with pytest.raises(ModelSpecError):
             AdaptiveMetropolis(initial_scale=0.0)
-

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from minibayes.results import InferenceResult
 
 
-
 def _get_total_samples(samples: dict[str, NDArray[np.float64]]) -> int:
     """Get total number of samples (flattening chains if multi-chain)."""
     first_key: str = next(iter(samples.keys()))
@@ -81,18 +80,14 @@ def _stack_predictions(
     output: dict[str, NDArray[np.float64]] = {}
     pred_keys: list[str] = list(all_predictions[0].keys())
     for key in pred_keys:
-        stacked: NDArray[np.float64] = np.stack(
-            [p[key] for p in all_predictions], axis=0
-        )
+        stacked: NDArray[np.float64] = np.stack([p[key] for p in all_predictions], axis=0)
         output[key] = stacked
     return output
 
 
 def sample_posterior_predictive(
     result: "InferenceResult",
-    predictive_fn: Callable[
-        ["StructuredParams", np.random.Generator], dict[str, ArrayLike]
-    ],
+    predictive_fn: Callable[["StructuredParams", np.random.Generator], dict[str, ArrayLike]],
     num_samples: int | None = None,
     seed: int | None = None,
 ) -> dict[str, NDArray[np.float64]]:
@@ -153,9 +148,7 @@ def sample_posterior_predictive(
         idx: int = cast("int", indices[i])
         params: StructuredParams = _get_param_dict(result.samples, idx)
         raw_output: dict[str, ArrayLike] = predictive_fn(params, rng)
-        pred: dict[str, NDArray[np.float64]] = {
-            k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()
-        }
+        pred: dict[str, NDArray[np.float64]] = {k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()}
         all_predictions.append(pred)
 
     return _stack_predictions(all_predictions)
@@ -163,9 +156,7 @@ def sample_posterior_predictive(
 
 def sample_prior_predictive(
     model: "Model",
-    predictive_fn: Callable[
-        ["StructuredParams", np.random.Generator], dict[str, ArrayLike]
-    ],
+    predictive_fn: Callable[["StructuredParams", np.random.Generator], dict[str, ArrayLike]],
     num_samples: int = 500,
     seed: int | None = None,
 ) -> dict[str, NDArray[np.float64]]:
@@ -204,9 +195,7 @@ def sample_prior_predictive(
     for _ in range(num_samples):
         params: StructuredParams = model.sample_prior(rng)
         raw_output: dict[str, ArrayLike] = predictive_fn(params, rng)
-        pred: dict[str, NDArray[np.float64]] = {
-            k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()
-        }
+        pred: dict[str, NDArray[np.float64]] = {k: np.asarray(v, dtype=np.float64) for k, v in raw_output.items()}
         all_predictions.append(pred)
 
     return _stack_predictions(all_predictions)

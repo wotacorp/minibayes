@@ -699,3 +699,116 @@ def _plot_discrete_distributions(
 
     ax.set_xlabel("k", fontsize=10, color="#4A4A4A")
     ax.set_xticks(k)
+
+
+def plot_pair(
+    data: InferenceResult | dict[str, NDArray[np.float64]],
+    params: list[str] | None = None,
+    markers: dict[str, tuple[float, float]] | None = None,
+    subsample: int = 2000,
+    alpha: float = 0.15,
+    ax: Axes | None = None,
+) -> Figure:
+    """
+    Plot joint posterior as 2D scatter.
+
+    Shows correlation structure between two parameters by plotting
+    samples as a scatter plot with optional reference markers.
+
+    Parameters
+    ----------
+    data : InferenceResult or dict
+        MCMC samples. Shape (num_chains, num_samples) per parameter.
+    params : list[str], optional
+        Exactly 2 parameters to plot. If None, uses first 2.
+    markers : dict, optional
+        Named markers to plot. {"True": (70, 75), "Estimate": (69.9, 74.7)}
+    subsample : int
+        Max points to plot (for performance). Default 2000.
+    alpha : float
+        Point transparency. Default 0.15.
+    ax : Axes, optional
+        Existing axes. If None, creates new figure.
+
+    Returns
+    -------
+    Figure
+        The matplotlib figure.
+
+    Examples
+    --------
+    >>> fig = viz.plot_pair(result, params=["mu_math", "mu_reading"],
+    ...                     markers={"True": (70, 75)})
+    """
+    import matplotlib.pyplot as plt
+
+    samples = extract_samples(data, params)
+    param_names = list(samples.keys())
+
+    if len(param_names) < 2:
+        raise ValueError("plot_pair requires at least 2 parameters")
+
+    # Use first 2 parameters
+    name_x: str = param_names[0]
+    name_y: str = param_names[1]
+    x_samples: NDArray[np.float64] = flatten_samples(samples[name_x])
+    y_samples: NDArray[np.float64] = flatten_samples(samples[name_y])
+
+    # Subsample for performance
+    n: int = len(x_samples)
+    if n > subsample:
+        rng = np.random.default_rng(42)
+        idx: NDArray[np.int64] = rng.choice(n, size=subsample, replace=False)
+        x_samples = x_samples[idx]
+        y_samples = y_samples[idx]
+
+    # Create figure
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=(7, 6))
+        ax_plot = cast("Axes", ax_plot)
+        fig_out: Figure = cast("Figure", fig)
+    else:
+        fig_out = cast("Figure", ax.figure)
+        ax_plot = ax
+
+    _apply_style_to_fig(fig_out)
+    _style_axes(ax_plot)
+
+    # Scatter plot
+    ax_plot.scatter(
+        x_samples,
+        y_samples,
+        alpha=alpha,
+        s=10,
+        color=PALETTE["blue"],
+        label="Posterior",
+    )
+
+    # Add markers
+    if markers:
+        marker_styles: list[tuple[str, int]] = [("*", 200), ("o", 100), ("s", 80), ("^", 80)]
+        for i, (label, coords) in enumerate(markers.items()):
+            mx: float = coords[0]
+            my: float = coords[1]
+            marker: str = marker_styles[i % len(marker_styles)][0]
+            size: int = marker_styles[i % len(marker_styles)][1]
+            color = CHAIN_COLORS[(i + 1) % len(CHAIN_COLORS)]
+            ax_plot.scatter(
+                [mx],
+                [my],
+                marker=marker,
+                s=size,
+                color=color,
+                edgecolor="white",
+                linewidth=1.5,
+                zorder=10,
+                label=label,
+            )
+
+    ax_plot.set_xlabel(name_x, fontsize=10, color="#4A4A4A")
+    ax_plot.set_ylabel(name_y, fontsize=10, color="#4A4A4A")
+    ax_plot.set_title(f"Joint Posterior: {name_x} vs {name_y}", fontsize=11, color="#4A4A4A")
+    ax_plot.legend(fontsize=8, frameon=False)
+
+    plt.tight_layout()
+    return fig_out

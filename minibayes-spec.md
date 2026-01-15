@@ -44,8 +44,13 @@ This covers:
 
 **Planned for future versions:**
 - v0.5: HMC/NUTS samplers for better performance
-- v0.6: MultivariateNormal, LKJ priors
+- v0.6: Wishart/InverseWishart for covariance estimation
 - v0.7: Gaussian processes
+
+**Added in v0.4.1:**
+- MultivariateNormal distribution (for likelihoods with correlated outcomes)
+- LKJCholesky distribution for correlation matrix priors
+- Matrix parameter support (`shape=` parameter in p())
 
 ### Target Users
 
@@ -872,8 +877,8 @@ class ModelSpecError(minibayesError):
 
 ### v0.6 — "Multivariate"
 **Use case: Correlated parameters, covariance priors**
-- [ ] MvNormal distribution (multivariate normal)
-- [ ] LKJCholesky for correlation priors
+- [x] MvNormal distribution (multivariate normal) — *Added in v0.4.1*
+- [x] LKJCholesky for correlation priors — *Added in v0.4.1*
 - [ ] Wishart/InverseWishart for covariance priors
 
 ### v0.7 — "Mixtures & Clustering"

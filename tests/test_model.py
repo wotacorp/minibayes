@@ -2,13 +2,12 @@
 
 import numpy as np
 import pytest
-from numpy.typing import NDArray
 from scipy import stats
 
 from minibayes import dist
 from minibayes.exceptions import ModelSpecError
 from minibayes.model import Model, StructuredParams
-from minibayes.params import ParamContext, ParamInfo, ParamMode
+from minibayes.params import ParamContext, ParamMode
 from minibayes.transforms import (
     AffineTransform,
     IdentityTransform,
@@ -492,9 +491,7 @@ class TestHierarchicalModel:
         lp_mu: float = float(stats.norm(0, 5).logpdf(2.0))
         lp_sigma: float = float(stats.halfnorm(scale=1).logpdf(0.5))
         # theta[i] ~ Normal(2.0, 0.5)
-        lp_theta: float = float(
-            np.sum(stats.norm(2.0, 0.5).logpdf(params["theta"]))
-        )
+        lp_theta: float = float(np.sum(stats.norm(2.0, 0.5).logpdf(params["theta"])))
         expected = lp_mu + lp_sigma + lp_theta
 
         np.testing.assert_allclose(lp, expected, rtol=1e-10)

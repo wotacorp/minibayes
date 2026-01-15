@@ -72,9 +72,7 @@ class TestSamplePosteriorPredictive:
     def test_basic_usage(self, simple_result: InferenceResult) -> None:
         """Test basic posterior predictive sampling."""
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": np.array([params["mu"] * 2])}
 
         ppc = sample_posterior_predictive(simple_result, predictive, seed=42)
@@ -87,12 +85,8 @@ class TestSamplePosteriorPredictive:
     def test_with_stochastic_predictive(self, simple_result: InferenceResult) -> None:
         """Test predictive with random sampling using dist."""
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
-            samples: NDArray[np.float64] = dist.Normal(params["mu"], 0.1).sample(
-                size=3, rng=rng
-            )
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
+            samples: NDArray[np.float64] = dist.Normal(params["mu"], 0.1).sample(size=3, rng=rng)
             return {"y": samples}
 
         ppc = sample_posterior_predictive(simple_result, predictive, seed=42)
@@ -106,9 +100,7 @@ class TestSamplePosteriorPredictive:
     def test_num_samples_thinning(self, simple_result: InferenceResult) -> None:
         """Test num_samples parameter for thinning."""
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": np.array([params["mu"]])}
 
         ppc = sample_posterior_predictive(simple_result, predictive, num_samples=2)
@@ -128,9 +120,7 @@ class TestSamplePosteriorPredictive:
             elapsed_time=0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": np.array([params["mu"]])}
 
         ppc = sample_posterior_predictive(result, predictive)
@@ -144,9 +134,7 @@ class TestSamplePosteriorPredictive:
     def test_reproducibility(self, simple_result: InferenceResult) -> None:
         """Test same seed gives same results."""
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": dist.Normal(params["mu"], 1.0).sample(size=3, rng=rng)}
 
         ppc1 = sample_posterior_predictive(simple_result, predictive, seed=123)
@@ -157,9 +145,7 @@ class TestSamplePosteriorPredictive:
     def test_multiple_outputs(self, simple_result: InferenceResult) -> None:
         """Test predictive returning multiple outputs."""
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             mu: float = params["mu"]
             return {
                 "mean": np.array([mu]),
@@ -186,9 +172,7 @@ class TestSamplePosteriorPredictive:
             elapsed_time=0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": np.array([0.0])}
 
         with pytest.raises(ValueError, match="No samples"):
@@ -209,9 +193,7 @@ class TestSamplePriorPredictive:
             log_likelihood=lambda p, d: 0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": dist.Normal(params["mu"], 0.1).sample(size=3, rng=rng)}
 
         ppc = sample_prior_predictive(model, predictive, num_samples=100, seed=42)
@@ -230,9 +212,7 @@ class TestSamplePriorPredictive:
             log_likelihood=lambda p, d: 0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": dist.Normal(params["mu"], 1.0).sample(size=3, rng=rng)}
 
         ppc1 = sample_prior_predictive(model, predictive, num_samples=50, seed=123)
@@ -252,9 +232,7 @@ class TestSamplePriorPredictive:
             log_likelihood=lambda p, d: 0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": dist.Normal(params["mu"], params["sigma"]).sample(size=5, rng=rng)}
 
         ppc = sample_prior_predictive(model, predictive, num_samples=100, seed=42)
@@ -278,9 +256,7 @@ class TestInferenceResultPredict:
             elapsed_time=0.0,
         )
 
-        def predictive(
-            params: dict[str, float], rng: np.random.Generator
-        ) -> dict[str, NDArray[np.float64]]:
+        def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
             return {"y": np.array([params["mu"] + 1])}
 
         ppc = result.predict(predictive, seed=42)

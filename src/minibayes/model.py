@@ -67,11 +67,22 @@ class Model:
         for name, info in self._param_info.items():
             self._transforms[name] = info.distribution.default_transform()
 
+        # Compute unconstrained sizes (may differ for matrix params with transforms)
+        self._unconstrained_sizes: dict[str, int] = {}
+        for name, info in self._param_info.items():
+            if info.shape is not None:
+                # Matrix param: unconstrained size = length of transform output
+                transform = self._transforms[name]
+                sample_val: NDArray[np.float64] = np.asarray(ctx.values[name], dtype=np.float64)
+                unc: NDArray[np.float64] = transform.forward(sample_val)
+                self._unconstrained_sizes[name] = int(unc.size)
+            else:
+                # Scalar/vector: unconstrained size = constrained size
+                self._unconstrained_sizes[name] = info.size
+
         # Precompute params that need Jacobian correction (skip IdentityTransform)
         self._params_with_jacobian: list[str] = [
-            name
-            for name in self._param_order
-            if not isinstance(self._transforms[name], IdentityTransform)
+            name for name in self._param_order if not isinstance(self._transforms[name], IdentityTransform)
         ]
 
         # Build flat parameter names for sampler interface
@@ -81,9 +92,7 @@ class Model:
     # Explicit methods - no context-dependent magic
     # -------------------------------------------------------------------------
 
-    def sample_prior(
-        self, rng: np.random.Generator | None = None
-    ) -> StructuredParams:
+    def sample_prior(self, rng: np.random.Generator | None = None) -> StructuredParams:
         """
         Draw one sample from the joint prior.
 
@@ -116,11 +125,15 @@ class Model:
         """
         result: dict[str, float | NDArray[np.float64]] = {}
         for name, info in self._param_info.items():
-            mean_val: float = info.distribution.mean
-            if info.is_vector:
+            if info.shape is not None:
+                # Matrix parameter: use identity matrix as default (valid for correlation Cholesky)
+                d = info.shape[0]
+                result[name] = np.eye(d, dtype=np.float64)
+            elif info.is_vector:
+                mean_val: float = info.distribution.mean
                 result[name] = np.full(info.size, mean_val, dtype=np.float64)
             else:
-                result[name] = mean_val
+                result[name] = info.distribution.mean
         return result
 
     def log_prior(self, params: StructuredParams) -> float:
@@ -273,7 +286,9 @@ class Model:
         for name in self._param_order:
             info = self._param_info[name]
             if info.is_vector:
-                flat_names.extend(f"{name}[{i}]" for i in range(info.size))
+                # Use unconstrained size (may differ for matrix params)
+                unc_size = self._unconstrained_sizes[name]
+                flat_names.extend(f"{name}[{i}]" for i in range(unc_size))
             else:
                 flat_names.append(name)
         return flat_names
@@ -288,7 +303,7 @@ class Model:
         Parameters
         ----------
         params : dict
-            Structured params: scalars as float, vectors as 1D arrays.
+            Structured params: scalars as float, vectors as 1D arrays, matrices as 2D.
 
         Returns
         -------
@@ -304,7 +319,9 @@ class Model:
             if info.is_vector:
                 arr: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
                 unc: NDArray[np.float64] = transform.forward(arr)
-                for i in range(info.size):
+                # Use unconstrained size (may differ for matrix params)
+                unc_size = self._unconstrained_sizes[name]
+                for i in range(unc_size):
                     val: float = float(unc.flat[i])
                     result[f"{name}[{i}]"] = val
             else:
@@ -327,7 +344,7 @@ class Model:
         Returns
         -------
         dict
-            Structured params: scalars as float, vectors as 1D arrays.
+            Structured params: scalars as float, vectors as 1D arrays, matrices as 2D.
         """
         result: StructuredParams = {}
         for name in self._param_order:
@@ -335,9 +352,9 @@ class Model:
             transform = self._transforms[name]
 
             if info.is_vector:
-                unc_list: list[float] = [
-                    flat[f"{name}[{i}]"] for i in range(info.size)
-                ]
+                # Use unconstrained size (may differ for matrix params)
+                unc_size = self._unconstrained_sizes[name]
+                unc_list: list[float] = [flat[f"{name}[{i}]"] for i in range(unc_size)]
                 unc_arr: NDArray[np.float64] = np.array(unc_list, dtype=np.float64)
                 result[name] = transform.inverse(unc_arr)
             else:
@@ -473,13 +490,9 @@ class Model:
             if not isinstance(lp, float):
                 lp_arr: NDArray[np.float64] = lp
                 if not bool(np.all(np.isfinite(lp_arr))):
-                    raise ModelSpecError(
-                        f"Parameter '{name}' has values outside support"
-                    )
+                    raise ModelSpecError(f"Parameter '{name}' has values outside support")
             else:
                 if not np.isfinite(lp):
-                    raise ModelSpecError(
-                        f"Parameter '{name}' value {value} is outside support"
-                    )
+                    raise ModelSpecError(f"Parameter '{name}' value {value} is outside support")
 
         return True

@@ -7,8 +7,8 @@ import pytest
 
 import minibayes as mb
 from minibayes import dist
-from minibayes.params import ParamContext
 from minibayes.model import StructuredParams
+from minibayes.params import ParamContext
 from minibayes.results import InferenceResult
 
 
@@ -23,7 +23,7 @@ def _quadratic_likelihood(params: StructuredParams, data: object) -> float:
     x = params["x"]
     if isinstance(x, np.ndarray):
         return float(-np.sum(x**2))
-    return float(-x**2)
+    return float(-(x**2))
 
 
 # Module-level priors function for parallel testing
@@ -431,9 +431,7 @@ class TestSampleParallel:
             log_likelihood=_zero_likelihood,
         )
 
-        result = mb.sample(
-            model, num_samples=50, num_warmup=20, num_chains=4, parallel=True, seed=42
-        )
+        result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=4, parallel=True, seed=42)
 
         assert result.samples["x"].shape == (4, 50)
         assert result.num_chains == 4
@@ -447,12 +445,8 @@ class TestSampleParallel:
             log_likelihood=_quadratic_likelihood,
         )
 
-        result_seq = mb.sample(
-            model, num_samples=50, num_warmup=20, num_chains=2, parallel=False, seed=42
-        )
-        result_par = mb.sample(
-            model, num_samples=50, num_warmup=20, num_chains=2, parallel=True, seed=42
-        )
+        result_seq = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, parallel=False, seed=42)
+        result_par = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, parallel=True, seed=42)
 
         np.testing.assert_array_equal(result_seq.samples["x"], result_par.samples["x"])
 
@@ -468,9 +462,7 @@ class TestSampleParallel:
             log_likelihood=lambda p, d: 0.0,
         )
 
-        result = mb.sample(
-            model, num_samples=50, num_warmup=20, num_chains=1, parallel=True, seed=42
-        )
+        result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=1, parallel=True, seed=42)
 
         assert result.samples["x"].shape == (1, 50)
 
@@ -518,9 +510,7 @@ class TestSampleParallel:
 
         # Parallel should be faster for large workloads
         # Use generous margin (0.95) since CI environments vary
-        assert par_time < seq_time * 0.95, (
-            f"Parallel ({par_time:.2f}s) not faster than sequential ({seq_time:.2f}s)"
-        )
+        assert par_time < seq_time * 0.95, f"Parallel ({par_time:.2f}s) not faster than sequential ({seq_time:.2f}s)"
 
     def test_progress_shows_elapsed_time(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test progress=True shows elapsed time at end."""
@@ -602,9 +592,7 @@ class TestVectorParameters:
         y = np.array([1.0, 2.0, 3.0, 4.0])
         sigma = np.array([1.0, 1.0, 1.0, 1.0])
 
-        result = mb.sample(
-            model, data=(y, sigma), num_samples=100, num_warmup=50, seed=42
-        )
+        result = mb.sample(model, data=(y, sigma), num_samples=100, num_warmup=50, seed=42)
 
         assert result.samples["mu"].shape == (1, 100)
         assert result.samples["tau"].shape == (1, 100)

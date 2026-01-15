@@ -408,3 +408,75 @@ class TestPlotDistribution:
         result_fig = plot_distribution(dist.Normal(0, 1), ax=ax)
         assert result_fig is fig
         plt.close(fig)
+
+
+class TestPlotPair:
+    """Test plot_pair function."""
+
+    def test_basic(self, mock_samples) -> None:
+        """Test basic 2-param scatter."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from minibayes.viz import plot_pair
+
+        fig = plot_pair(mock_samples)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_with_markers(self, mock_samples) -> None:
+        """Test scatter with reference markers."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from minibayes.viz import plot_pair
+
+        fig = plot_pair(mock_samples, markers={"True": (1.0, 2.0)})
+        assert fig is not None
+        plt.close(fig)
+
+    def test_with_inference_result(self, mock_result) -> None:
+        """Test plot_pair with InferenceResult."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from minibayes.viz import plot_pair
+
+        fig = plot_pair(mock_result, params=["mu", "sigma"])
+        assert fig is not None
+        plt.close(fig)
+
+    def test_subsample(self) -> None:
+        """Test that large samples get subsampled."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from minibayes.viz import plot_pair
+
+        rng = np.random.default_rng(42)
+        large_samples = {
+            "a": rng.normal(0, 1, (2, 50000)),
+            "b": rng.normal(0, 1, (2, 50000)),
+        }
+        fig = plot_pair(large_samples, subsample=1000)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_requires_two_params(self) -> None:
+        """Test that plot_pair requires at least 2 parameters."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_pair
+
+        single_param = {"a": np.random.randn(2, 100)}
+        with pytest.raises(ValueError, match="requires at least 2 parameters"):
+            plot_pair(single_param)

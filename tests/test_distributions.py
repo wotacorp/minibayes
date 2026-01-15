@@ -606,3 +606,240 @@ class TestPoisson:
             dist.Poisson(rate=-1.0)
         with pytest.raises(ModelSpecError):
             dist.Poisson(rate=0.0)
+
+
+class TestMultivariateNormal:
+    """Tests for MultivariateNormal distribution."""
+
+    def test_log_prob_matches_scipy(self) -> None:
+        """log_prob matches scipy.stats reference for 2D."""
+        mean = np.array([1.0, 2.0])
+        cov = np.array([[2.0, 0.5], [0.5, 1.0]])
+        d = dist.MultivariateNormal(mean=mean, cov=cov)
+        scipy_d = stats.multivariate_normal(mean=mean, cov=cov)
+        x: NDArray[np.float64] = np.array([[0.0, 0.0], [1.0, 2.0], [2.0, 3.0]])
+        result: NDArray[np.float64] = np.asarray(d.log_prob(x))
+        expected: NDArray[np.float64] = scipy_d.logpdf(x)
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_log_prob_single_observation(self) -> None:
+        """log_prob with single observation returns float."""
+        mean = np.array([0.0, 0.0])
+        cov = np.eye(2)
+        d = dist.MultivariateNormal(mean=mean, cov=cov)
+        result = d.log_prob(np.array([0.0, 0.0]))
+        assert isinstance(result, float)
+
+    def test_log_prob_batch(self) -> None:
+        """log_prob with batch returns array."""
+        mean = np.array([0.0, 0.0])
+        cov = np.eye(2)
+        d = dist.MultivariateNormal(mean=mean, cov=cov)
+        x: NDArray[np.float64] = np.array([[0.0, 0.0], [1.0, 1.0]])
+        result = d.log_prob(x)
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (2,)
+
+    def test_sample_shape_none(self) -> None:
+        """sample with size=None returns shape (d,)."""
+        mean = np.array([0.0, 0.0, 0.0])
+        cov = np.eye(3)
+        d = dist.MultivariateNormal(mean=mean, cov=cov)
+        rng = np.random.default_rng(42)
+        sample = d.sample(size=None, rng=rng)
+        assert sample.shape == (3,)
+
+    def test_sample_shape_int(self) -> None:
+        """sample with size=n returns shape (n, d)."""
+        mean = np.array([0.0, 0.0])
+        cov = np.eye(2)
+        d = dist.MultivariateNormal(mean=mean, cov=cov)
+        rng = np.random.default_rng(42)
+        samples = d.sample(size=100, rng=rng)
+        assert samples.shape == (100, 2)
+
+    def test_invalid_mean_not_1d_raises(self) -> None:
+        """Raises if mean is not 1D."""
+        mean = np.array([[0.0, 0.0]])
+        cov = np.eye(2)
+        with pytest.raises(ModelSpecError, match="mean must be 1D"):
+            dist.MultivariateNormal(mean=mean, cov=cov)
+
+    def test_invalid_cov_dimension_raises(self) -> None:
+        """Raises if cov dimension doesn't match mean."""
+        mean = np.array([0.0, 0.0])
+        cov = np.eye(3)
+        with pytest.raises(ModelSpecError, match="cov must be"):
+            dist.MultivariateNormal(mean=mean, cov=cov)
+
+    def test_invalid_cov_not_pd_raises(self) -> None:
+        """Raises if cov is not positive definite."""
+        mean = np.array([0.0, 0.0])
+        cov = np.array([[1.0, 2.0], [2.0, 1.0]])  # Not PD
+        with pytest.raises(ModelSpecError, match="positive definite"):
+            dist.MultivariateNormal(mean=mean, cov=cov)
+
+
+class TestLKJCholesky:
+    """Tests for LKJCholesky distribution."""
+
+    def test_log_prob_identity(self) -> None:
+        """Identity Cholesky has valid log_prob."""
+        d = dist.LKJCholesky(dim=3, eta=2.0)
+        L = np.eye(3)
+        result = d.log_prob(L)
+        assert isinstance(result, float)
+        assert np.isfinite(result)
+
+    def test_sample_valid_cholesky(self) -> None:
+        """Samples are lower triangular with positive diagonal."""
+        d = dist.LKJCholesky(dim=3, eta=1.0)
+        rng = np.random.default_rng(42)
+        L: NDArray[np.float64] = d.sample(rng=rng)
+
+        # Check lower triangular (upper triangle is zero)
+        np.testing.assert_allclose(np.triu(L, k=1), 0.0)
+
+        # Check positive diagonal
+        assert np.all(np.diag(L) > 0)
+
+    def test_sample_valid_correlation(self) -> None:
+        """L @ L.T is valid correlation matrix (diag=1, |off|<1)."""
+        d = dist.LKJCholesky(dim=3, eta=1.0)
+        rng = np.random.default_rng(42)
+        L: NDArray[np.float64] = d.sample(rng=rng)
+        corr: NDArray[np.float64] = L @ L.T
+
+        # Diagonal should be 1
+        np.testing.assert_allclose(np.diag(corr), 1.0, atol=1e-10)
+
+        # Off-diagonal should be in (-1, 1)
+        off_diag = corr[np.triu_indices(3, k=1)]
+        assert np.all(np.abs(off_diag) < 1)
+
+    def test_transform_roundtrip(self) -> None:
+        """inverse(forward(L)) == L for valid Cholesky."""
+        d = dist.LKJCholesky(dim=3, eta=2.0)
+        transform = d.default_transform()
+        rng = np.random.default_rng(42)
+        L: NDArray[np.float64] = d.sample(rng=rng)
+
+        # Forward then inverse should recover L
+        y = transform.forward(L)
+        L_recovered = transform.inverse(y)
+        np.testing.assert_allclose(L_recovered, L, atol=1e-6)
+
+    def test_sample_shape(self) -> None:
+        """Verify sample shapes."""
+        d = dist.LKJCholesky(dim=2, eta=1.0)
+        rng = np.random.default_rng(42)
+
+        # Single sample
+        single = d.sample(rng=rng)
+        assert single.shape == (2, 2)
+
+        # Multiple samples
+        batch = d.sample(size=5, rng=rng)
+        assert batch.shape == (5, 2, 2)
+
+    def test_invalid_inputs_raise(self) -> None:
+        """dim<2 or eta<=0 raises ModelSpecError."""
+        with pytest.raises(ModelSpecError, match="dim must be >= 2"):
+            dist.LKJCholesky(dim=1, eta=1.0)
+
+        with pytest.raises(ModelSpecError, match="eta must be positive"):
+            dist.LKJCholesky(dim=2, eta=0.0)
+
+        with pytest.raises(ModelSpecError, match="eta must be positive"):
+            dist.LKJCholesky(dim=2, eta=-1.0)
+
+    def test_marginal_beta_distribution(self) -> None:
+        """Off-diagonal correlations follow predicted Beta distribution."""
+        from scipy import stats
+
+        lkj = dist.LKJCholesky(dim=3, eta=2.0)
+        rng = np.random.default_rng(42)
+
+        # Sample many correlation matrices
+        correlations: list[float] = []
+        for _ in range(5000):
+            L: NDArray[np.float64] = lkj.sample(rng=rng)
+            R: NDArray[np.float64] = L @ L.T
+            r_12: float = float(R[0, 1])  # type: ignore[misc]
+            correlations.append(r_12)
+
+        # Transform to (0, 1) and test against Beta
+        transformed: list[float] = [(r + 1) / 2 for r in correlations]
+        alpha: float = 2.0 + (3 - 2) / 2  # eta + (d-2)/2 = 2.5
+
+        # Kolmogorov-Smirnov test
+        result = stats.kstest(transformed, "beta", args=(alpha, alpha))
+        assert result.pvalue > 0.01, f"KS test failed: p={result.pvalue}"
+
+    def test_density_formula_matches_diagonal(self) -> None:
+        """log_prob computed via method matches formula from diagonal."""
+        lkj = dist.LKJCholesky(dim=3, eta=2.0)
+        rng = np.random.default_rng(42)
+
+        for _ in range(100):
+            L: NDArray[np.float64] = lkj.sample(rng=rng)
+
+            # Compute via method
+            lp_method: float = float(lkj.log_prob(L))
+
+            # Compute via formula: sum_{k=1}^{d-1} (d - (k+1) + 2*eta - 2) * log(L[k,k])
+            lp_formula: float = 0.0
+            d: int = 3
+            eta: float = 2.0
+            for k in range(1, d):
+                exponent: float = d - (k + 1) + 2 * eta - 2
+                lp_formula += exponent * float(np.log(L[k, k]))
+
+            np.testing.assert_allclose(lp_method, lp_formula, rtol=1e-10)
+
+    def test_eta_controls_concentration(self) -> None:
+        """Higher eta -> correlations closer to zero."""
+        rng = np.random.default_rng(42)
+
+        std_devs: dict[float, float] = {}
+        for eta in [0.5, 1.0, 2.0, 5.0]:
+            lkj = dist.LKJCholesky(dim=3, eta=eta)
+            correlations: list[float] = []
+            for _ in range(1000):
+                L: NDArray[np.float64] = lkj.sample(rng=rng)
+                R: NDArray[np.float64] = L @ L.T
+                correlations.append(float(R[0, 1]))  # type: ignore[misc]
+            std_devs[eta] = float(np.std(correlations))
+
+        # Higher eta should have smaller std (more concentrated around 0)
+        assert std_devs[0.5] > std_devs[1.0] > std_devs[2.0] > std_devs[5.0]
+
+    def test_jacobian_sign_correctness(self) -> None:
+        """Jacobian has correct sign per minibayes convention."""
+        from minibayes.transforms.corr_cholesky import CorrCholeskyTransform
+
+        transform = CorrCholeskyTransform(dim=2)
+
+        # Create a valid Cholesky factor
+        L: NDArray[np.float64] = np.array([[1.0, 0.0], [0.5, np.sqrt(0.75)]])
+
+        # Numerical differentiation
+        eps: float = 1e-7
+        y: NDArray[np.float64] = transform.forward(L)
+
+        # For 2x2, there's 1 off-diagonal element
+        # Perturb y and measure change in L
+        y_plus: NDArray[np.float64] = y + eps
+        y_minus: NDArray[np.float64] = y - eps
+        L_plus: NDArray[np.float64] = transform.inverse(y_plus)
+        L_minus: NDArray[np.float64] = transform.inverse(y_minus)
+
+        # Numerical Jacobian dL/dy (for the single off-diagonal)
+        numerical_deriv: float = float((L_plus[1, 0] - L_minus[1, 0]) / (2 * eps))
+
+        # Analytical log|dL/dy|
+        log_det: NDArray[np.float64] = transform.log_det_jacobian(L)
+        analytical_deriv: float = float(np.exp(float(log_det)))
+
+        # Should match (within numerical tolerance)
+        np.testing.assert_allclose(abs(numerical_deriv), analytical_deriv, rtol=1e-4)

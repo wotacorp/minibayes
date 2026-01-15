@@ -344,9 +344,7 @@ def sample(
         results = [run_one_chain(i) for i in range(num_chains)]
 
     # Collect flat samples
-    all_samples_flat: dict[str, list[list[float]]] = {
-        name: [] for name in flat_param_names
-    }
+    all_samples_flat: dict[str, list[list[float]]] = {name: [] for name in flat_param_names}
     acceptance_rates: list[float] = []
     for chain_samples, accepts in results:
         for name in flat_param_names:
@@ -363,21 +361,36 @@ def sample(
     samples_unconstrained: dict[str, NDArray[np.float64]] = {}
     samples_constrained: dict[str, NDArray[np.float64]] = {}
 
+    # Get unconstrained sizes from model (may differ from info.size for matrix params)
+    unconstrained_sizes = model._unconstrained_sizes
+
     for name in structured_param_names:
         info = param_info[name]
         transform = model.transforms[name]
 
         if info.is_vector:
-            # Vector param: gather theta[0], theta[1], ... into (chains, samples, size)
+            # Vector/matrix param: gather theta[0], theta[1], ...
+            # Use unconstrained size (may differ for matrix params with transforms)
+            unc_size = unconstrained_sizes[name]
             unc_list: list[NDArray[np.float64]] = []
-            for i in range(info.size):
+            for i in range(unc_size):
                 flat_name = f"{name}[{i}]"
                 unc_list.append(flat_samples_unc[flat_name])
-            # Stack: each is (chains, samples), stack to (chains, samples, size)
+            # Stack: each is (chains, samples), stack to (chains, samples, unc_size)
             unc_arr: NDArray[np.float64] = np.stack(unc_list, axis=-1)
             samples_unconstrained[name] = unc_arr
-            # Transform: apply element-wise (works because transforms broadcast)
-            samples_constrained[name] = transform.inverse(unc_arr)
+            # Transform: inverse maps unconstrained back to constrained
+            # For matrix params, this may reshape from (chains, samples, unc_size) to (chains, samples, d, d)
+            constrained_samples: list[NDArray[np.float64]] = []
+            for chain_idx in range(num_chains):
+                chain_constrained: list[NDArray[np.float64]] = []
+                for sample_idx in range(num_samples):
+                    unc_sample = unc_arr[chain_idx, sample_idx, :]
+                    const_sample: NDArray[np.float64] = transform.inverse(unc_sample)
+                    chain_constrained.append(const_sample)
+                chain_arr: NDArray[np.float64] = np.array(chain_constrained, dtype=np.float64)
+                constrained_samples.append(chain_arr)
+            samples_constrained[name] = np.array(constrained_samples, dtype=np.float64)
         else:
             # Scalar param: shape (chains, samples)
             unc_arr = flat_samples_unc[name]

@@ -23,6 +23,8 @@ Each distribution provides two key operations:
 | **StudentT** | (-∞, +∞) | df (ν), loc (μ), scale (σ) | Robust regression, heavy tails |
 | **Cauchy** | (-∞, +∞) | loc, scale | Very heavy tails, robust priors |
 | **Laplace** | (-∞, +∞) | loc, scale | Sparse priors (L1 regularization) |
+| **MultivariateNormal** | ℝᵈ | mean (d,), cov (d,d) | Correlated multivariate outcomes |
+| **LKJCholesky** | Cholesky(d) | dim (d), eta (η) | Correlation matrix prior |
 
 ### Continuous - Positive (POSITIVE)
 
@@ -70,6 +72,8 @@ Each distribution provides two key operations:
 | **InverseGamma(α, β)** | α·log(β) - log(Γ(α)) - (α+1)·log(x) - β/x for x > 0 |
 | **Beta(α, β)** | (α-1)·log(x) + (β-1)·log(1-x) - log(B(α,β)) for x ∈ (0,1) |
 | **Uniform(a, b)** | -log(b-a) for x ∈ [a,b] |
+| **MultivariateNormal(μ, Σ)** | -½(d·log(2π) + log\|Σ\| + (x-μ)ᵀΣ⁻¹(x-μ)) |
+| **LKJCholesky(d, η)** | Σₖ₌₂ᵈ (d - k + 2η - 2)·log(L[k,k]) |
 
 ### Discrete
 
@@ -95,7 +99,7 @@ Distributions are automatically paired with transforms based on their support:
 
 Call `dist.default_transform()` to get the appropriate transform.
 
-**Note:** Discrete distributions (Bernoulli, Poisson) are primarily used in likelihood functions, not as sampled parameters.
+**Note:** Discrete distributions (Bernoulli, Poisson) and MultivariateNormal are primarily used in likelihood functions, not as sampled parameters. LKJCholesky uses `CorrCholeskyTransform` for sampling.
 
 ## Usage
 
@@ -118,6 +122,26 @@ samples = prior_sigma.sample(size=1000, rng=rng)
 
 # Get transform for MCMC
 transform = prior_sigma.default_transform()  # LogTransform
+
+# MultivariateNormal for correlated outcomes (use in likelihood)
+mean = np.array([0.0, 0.0])
+cov = np.array([[1.0, 0.5], [0.5, 1.0]])
+mvn = dist.MultivariateNormal(mean=mean, cov=cov)
+mvn.log_prob(np.array([0.1, 0.2]))      # Single observation -> float
+mvn.log_prob(np.array([[0, 0], [1, 1]])) # Batch -> ndarray
+mvn.obs_logp(data)                       # Sum of log_prob for batch
+
+# LKJCholesky for correlation matrix priors (use shape= for matrix params)
+lkj = dist.LKJCholesky(dim=2, eta=2.0)
+L = lkj.sample(rng=rng)                  # (2, 2) lower triangular Cholesky
+corr = L @ L.T                           # Correlation matrix
+lkj.log_prob(L)                          # Log density of Cholesky factor
+
+# In a model with unknown covariance:
+def priors(p):
+    sigma_1 = p("sigma_1", dist.HalfNormal(10))
+    sigma_2 = p("sigma_2", dist.HalfNormal(10))
+    L_corr = p("L_corr", dist.LKJCholesky(dim=2, eta=2.0), shape=(2, 2))
 ```
 
 ## Parameterization Notes
@@ -159,5 +183,7 @@ rate = 1 / scale
 - [Wikipedia: Beta Distribution](https://en.wikipedia.org/wiki/Beta_distribution)
 - [Wikipedia: Bernoulli Distribution](https://en.wikipedia.org/wiki/Bernoulli_distribution)
 - [Wikipedia: Poisson Distribution](https://en.wikipedia.org/wiki/Poisson_distribution)
+- [Wikipedia: Multivariate Normal Distribution](https://en.wikipedia.org/wiki/Multivariate_normal_distribution)
+- [Stan LKJ Correlation Distribution](https://mc-stan.org/docs/functions-reference/correlation_matrix_distributions.html)
 - [Stan Functions Reference](https://mc-stan.org/docs/functions-reference/)
 - [PyMC Distributions](https://www.pymc.io/projects/docs/en/latest/api/distributions.html)
