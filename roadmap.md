@@ -396,3 +396,11 @@ def log_prob_unconstrained(self, unconstrained, data):
 ### 10. Memory
 - Preallocate arrays, don't append to lists
 - `samples = {k: np.empty(num_samples) for k in param_names}`
+
+---
+
+## Note on HMC/NUTS
+
+After analysis, we've decided not to implement gradient-based samplers (HMC/NUTS) in minibayes. See minibayes-spec.md "Design Decisions" section for detailed rationale.
+
+The next phase focuses on the affine-invariant ensemble sampler (emcee-style) for better mixing without the complexity of automatic differentiation.

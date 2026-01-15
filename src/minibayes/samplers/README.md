@@ -2,6 +2,23 @@
 
 Markov Chain Monte Carlo samplers for drawing samples from Bayesian posterior distributions.
 
+## Sampler Philosophy
+
+minibayes focuses on **gradient-free** MCMC methods. This is a deliberate design choice:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Gradient-free (our choice)** | Simple, robust, educational, minimal dependencies | Slower for high-d |
+| **Gradient-based (HMC/NUTS)** | Efficient for high-d, better mixing | Requires AD framework, complex |
+
+For most models minibayes targets (regression, hierarchical models with <50 params), well-tuned gradient-free samplers perform adequately. For high-dimensional problems, we recommend NumPyro or PyMC.
+
+### Planned Samplers (v0.5+)
+
+| Sampler | Description | Best For |
+|---------|-------------|----------|
+| **Ensemble (emcee)** | Affine-invariant, multi-walker | Multimodal, embarrassingly parallel |
+
 ## Why MCMC?
 
 In Bayesian inference, we need to compute expectations over the posterior distribution:

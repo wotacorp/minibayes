@@ -23,7 +23,7 @@
 
 - Replacing PyMC/NumPyro/Stan for research
 - Supporting every distribution or sampler
-- Automatic differentiation (users provide gradients for HMC, or we use finite differences)
+- Automatic differentiation (gradient-free samplers are sufficient for target use cases; see "Design Decisions" section)
 - GPU acceleration
 - Causal inference / do-calculus
 - Time series distributions (custom likelihood sufficient)
@@ -43,7 +43,7 @@ This covers:
 - Mixed effects models
 
 **Planned for future versions:**
-- v0.5: HMC/NUTS samplers for better performance
+- v0.5: Affine-invariant ensemble sampler (emcee-style) for better mixing
 - v0.6: Wishart/InverseWishart for covariance estimation
 - v0.7: Gaussian processes
 
@@ -867,10 +867,9 @@ class ModelSpecError(minibayesError):
 - [x] 3D sample arrays for vector params: `(chains, samples, size)`
 - [x] Diagnostics and predictive sampling for vector params
 
-### v0.5 — "HMC & Scalability"
-**Use case: Any GLM with scalable inference**
-- [ ] HMC sampler with finite-difference gradients
-- [ ] NUTS sampler (No-U-Turn)
+### v0.5 — "Better Mixing" (Gradient-Free)
+**Use case: Improved sampling for moderate-dimensional models**
+- [ ] Affine-invariant ensemble sampler (emcee-style, good for multimodal)
 - [ ] Binomial distribution
 - [ ] NegativeBinomial distribution
 - [ ] Categorical distribution
@@ -902,11 +901,44 @@ class ModelSpecError(minibayesError):
 - [ ] Warmup adaptation tuning (dual averaging)
 
 ### Deferred (v2.0+ or Never)
+- HMC/NUTS samplers (see "Design Decisions" section for rationale)
 - Numba JIT (premature optimization)
-- Variational inference (NUTS sufficient for most cases)
+- Variational inference (gradient-free samplers sufficient for target use cases)
 - Time series distributions (custom likelihood works)
 - JAX backend
 - Rust core with PyO3 bindings
+
+---
+
+## Design Decisions
+
+### Why No HMC/NUTS?
+
+minibayes deliberately focuses on gradient-free MCMC samplers. This decision was made after careful analysis:
+
+**The gradient complexity problem:**
+1. **Distribution gradients**: Each of 14 continuous distributions needs `grad_log_prob` (~200 lines)
+2. **Transform gradients**: Each of 5 transforms needs `grad_inverse` (~100 lines)
+3. **Likelihood gradients**: The real challenge - requires either:
+   - Finite differences (O(n) evaluations per step, negates HMC efficiency)
+   - User-provided gradients (burdensome API)
+   - Automatic differentiation (essentially building JAX - ~2000+ lines)
+
+**When HMC/NUTS matters:**
+- High-dimensional problems (d > 100 parameters)
+- Strong correlations that gradient information helps navigate
+- Research settings with complex hierarchical models
+
+**When gradient-free works well:**
+- Low-to-moderate dimensions (d < 50) - covers regression, A/B tests, typical hierarchical models
+- Edge deployment where simplicity > raw performance
+- Educational settings where algorithm transparency matters
+
+**Our recommendation:**
+For problems requiring HMC/NUTS, we recommend NumPyro or PyMC. minibayes aims to be the best choice for simpler models deployed in constrained environments.
+
+**Alternative gradient-free samplers (v0.5+):**
+- **Affine-invariant ensemble (emcee)**: Excellent for multimodal, parallelizable, handles correlations naturally
 
 ---
 

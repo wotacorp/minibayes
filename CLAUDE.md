@@ -182,4 +182,10 @@ Before committing:
 | `model.py` (matrix params) | ✓ Done | Matrix parameter support in flatten/unflatten |
 | `inference.py` (matrix params) | ✓ Done | Matrix parameter reconstruction in sample results |
 
-**v0.4.1 complete.** Next: v0.5 (HMC sampler, NUTS).
+| **v0.5 Gradient-Free** | | |
+| `samplers/ensemble.py` | Planned | Affine-invariant ensemble sampler (emcee-style) |
+
+| **Deferred** | | |
+| HMC/NUTS | Not planned | See minibayes-spec.md "Design Decisions" for rationale |
+
+**v0.4.1 complete.** Next: v0.5 (gradient-free samplers for better mixing).
