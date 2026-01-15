@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from minibayes.exceptions import ModelSpecError
-from minibayes.samplers import AdaptiveMetropolis, MetropolisHastings
+from minibayes.samplers import AdaptiveMetropolis, EnsembleSampler, MetropolisHastings
 
 
 class TestMetropolisHastings:
@@ -219,3 +219,114 @@ class TestAdaptiveMetropolis:
 
         with pytest.raises(ModelSpecError):
             AdaptiveMetropolis(initial_scale=0.0)
+
+
+class TestEnsembleSampler:
+    """Tests for EnsembleSampler."""
+
+    def test_initialize_sets_walkers(self, rng: np.random.Generator) -> None:
+        """Test initialize() creates walkers from initial states."""
+        sampler = EnsembleSampler(stretch_scale=2.0)
+
+        def log_prob(p: dict[str, float]) -> float:
+            return -0.5 * p["x"] ** 2
+
+        initial_states = [{"x": float(i)} for i in range(4)]
+        sampler.initialize(initial_states, log_prob)
+
+        assert sampler.num_chains == 4
+        states = sampler.get_states()
+        assert len(states) == 4
+        assert states[0]["x"] == 0.0
+        assert states[1]["x"] == 1.0
+
+    def test_num_walkers_must_be_even(self, rng: np.random.Generator) -> None:
+        """Test odd num_walkers raises error."""
+        sampler = EnsembleSampler()
+
+        def log_prob(p: dict[str, float]) -> float:
+            return -0.5 * p["x"] ** 2
+
+        initial_states = [{"x": float(i)} for i in range(3)]  # Odd number
+        with pytest.raises(ModelSpecError):
+            sampler.initialize(initial_states, log_prob)
+
+    def test_advance_updates_walkers(self, rng: np.random.Generator) -> None:
+        """Test advance() updates walker positions."""
+        sampler = EnsembleSampler(stretch_scale=2.0)
+
+        def log_prob(p: dict[str, float]) -> float:
+            return -0.5 * p["x"] ** 2
+
+        initial_states = [{"x": float(i - 2)} for i in range(4)]
+        sampler.initialize(initial_states, log_prob)
+
+        initial = [s["x"] for s in sampler.get_states()]
+
+        # Run several steps
+        for _ in range(10):
+            sampler.advance(log_prob, rng)
+
+        final = [s["x"] for s in sampler.get_states()]
+
+        # At least some walkers should have moved
+        assert initial != final
+
+    def test_normal_normal_posterior(self, rng: np.random.Generator) -> None:
+        """Test on Normal-Normal model with known posterior."""
+        data = [1.5, 2.0, 1.8, 2.2, 1.9]
+        n = len(data)
+        x_bar: float = sum(data) / n
+        posterior_mean: float = n * x_bar / (n + 1)  # ~1.57
+
+        def log_prob(p: dict[str, float]) -> float:
+            mu: float = p["mu"]
+            log_prior: float = -0.5 * mu**2
+            log_lik: float = sum(-0.5 * (x - mu) ** 2 for x in data)
+            return log_prior + log_lik
+
+        sampler = EnsembleSampler(stretch_scale=2.0)
+        # Initialize 4 walkers around 0
+        initial_states = [{"mu": rng.normal(0, 1)} for _ in range(4)]
+        sampler.initialize(initial_states, log_prob)
+
+        # Warmup
+        for _ in range(500):
+            sampler.advance(log_prob, rng)
+
+        # Sample
+        samples: list[float] = []
+        for _ in range(2000):
+            sampler.advance(log_prob, rng)
+            states = sampler.get_states()
+            for s in states:
+                samples.append(s["mu"])
+
+        empirical_mean: float = float(np.mean(samples))
+        assert abs(empirical_mean - posterior_mean) < 0.15
+
+    def test_acceptance_rate_reasonable(self, rng: np.random.Generator) -> None:
+        """Test acceptance rate is in reasonable range (15-50%)."""
+        sampler = EnsembleSampler(stretch_scale=2.0)
+
+        def log_prob(p: dict[str, float]) -> float:
+            return -0.5 * (p["x"] ** 2 + p["y"] ** 2)
+
+        initial_states = [{"x": rng.normal(), "y": rng.normal()} for _ in range(8)]
+        sampler.initialize(initial_states, log_prob)
+
+        # Run sampling
+        for _ in range(500):
+            sampler.advance(log_prob, rng)
+
+        acceptance_rate = sampler.acceptance_rate
+        # Ensemble samplers typically have higher acceptance rates
+        assert 0.15 < acceptance_rate < 0.85
+
+    def test_stretch_scale_validation(self) -> None:
+        """Test stretch_scale <= 1 raises error."""
+        with pytest.raises(ModelSpecError):
+            EnsembleSampler(stretch_scale=1.0)
+
+        with pytest.raises(ModelSpecError):
+            EnsembleSampler(stretch_scale=0.5)

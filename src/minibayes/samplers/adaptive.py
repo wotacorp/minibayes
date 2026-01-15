@@ -33,6 +33,7 @@ class AdaptiveMetropolis(Sampler):
         self,
         initial_scale: float = 1.0,
     ) -> None:
+        super().__init__()
         if initial_scale <= 0:
             raise ModelSpecError("initial_scale must be positive")
 

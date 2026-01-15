@@ -10,8 +10,9 @@ from numpy.typing import NDArray
 
 from minibayes.exceptions import ModelSpecError, SamplingError, SamplingTimeoutError
 from minibayes.model import Model, StructuredParams
+from minibayes.params import ParamInfo
 from minibayes.results import InferenceResult
-from minibayes.samplers import AdaptiveMetropolis, MetropolisHastings
+from minibayes.samplers import AdaptiveMetropolis, EnsembleSampler, MetropolisHastings
 from minibayes.samplers.base import Sampler
 from minibayes.utils import ensure_rng
 from minibayes.utils.progress import ProgressBar
@@ -20,6 +21,7 @@ from minibayes.utils.progress import ProgressBar
 _SAMPLERS: dict[str, type[Sampler]] = {
     "mh": MetropolisHastings,
     "adaptive_mh": AdaptiveMetropolis,
+    "ensemble": EnsembleSampler,
 }
 
 
@@ -57,76 +59,70 @@ def _get_initial_state(
         return model.to_flat_unconstrained(initial)
 
 
-def _run_chain(
+def _run_sampler(
     sampler: Sampler,
-    initial_state: dict[str, float],
     log_prob_fn: Callable[[dict[str, float]], float],
     num_warmup: int,
     num_samples: int,
     rng: np.random.Generator,
     flat_param_names: list[str],
-    chain_idx: int,
-    num_chains: int,
     progress: bool,
+    progress_prefix: str,
     timeout: float | None,
     start_time: float,
-) -> tuple[dict[str, list[float]], int]:
+) -> tuple[dict[str, list[list[float]]], float]:
     """
-    Run a single MCMC chain.
+    Run sampler using stateful interface.
 
-    Returns samples (flat unconstrained) and acceptance count.
+    Works for both single-chain and ensemble samplers.
 
-    Raises
-    ------
-    SamplingTimeoutError
-        If timeout is exceeded.
+    Returns
+    -------
+    tuple[dict[str, list[list[float]]], float]
+        Samples with shape [num_chains][num_samples] per param, and avg acceptance rate.
     """
-    state: dict[str, float] = initial_state.copy()
-
-    # Timeout check interval (every 100 steps)
     check_interval: int = 100
 
     def check_timeout() -> None:
         if timeout is not None:
             elapsed: float = time.perf_counter() - start_time
             if elapsed > timeout:
-                raise SamplingTimeoutError(f"Sampling timed out after {elapsed:.1f}s (timeout={timeout}s)")
+                raise SamplingTimeoutError(
+                    f"Sampling timed out after {elapsed:.1f}s (timeout={timeout}s)"
+                )
 
     # Warmup phase
-    chain_label: str = f"Chain {chain_idx + 1}/{num_chains}"
-    with ProgressBar(
-        num_warmup,
-        desc=f"{chain_label} [Warmup]  ",
-        disable=not progress,
-    ) as pbar:
+    with ProgressBar(num_warmup, desc=f"{progress_prefix}[Warmup]  ", disable=not progress) as pbar:
         for step_num in range(num_warmup):
-            state, _ = sampler.warmup_step(state, log_prob_fn, rng, step_num)
+            sampler.advance(log_prob_fn, rng, warmup=True, step_num=step_num)
             pbar.update()
             if step_num % check_interval == 0:
                 check_timeout()
 
-    # Post-warmup finalization (e.g., freeze adaptive samplers)
+    # Post-warmup finalization
     sampler.post_warmup()
 
     # Sampling phase
-    samples: dict[str, list[float]] = {name: [] for name in flat_param_names}
-    accepts: int = 0
+    num_chains: int = sampler.num_chains
+    samples: dict[str, list[list[float]]] = {
+        name: [[] for _ in range(num_chains)] for name in flat_param_names
+    }
+    total_accept_rate: float = 0.0
 
-    with ProgressBar(
-        num_samples,
-        desc=f"{chain_label} [Sampling]",
-        disable=not progress,
-    ) as pbar:
+    with ProgressBar(num_samples, desc=f"{progress_prefix}[Sampling]", disable=not progress) as pbar:
         for step_num in range(num_samples):
-            state, accepted = sampler.step(state, log_prob_fn, rng)
-            accepts += int(accepted)
-            for name in flat_param_names:
-                samples[name].append(state[name])
+            accept_rate: float = sampler.advance(log_prob_fn, rng)
+            total_accept_rate += accept_rate
+            states: list[dict[str, float]] = sampler.get_states()
+            for k, state in enumerate(states):
+                for name in flat_param_names:
+                    samples[name][k].append(state[name])
             pbar.update()
             if step_num % check_interval == 0:
                 check_timeout()
 
-    return samples, accepts
+    avg_acceptance: float = total_accept_rate / num_samples if num_samples > 0 else 0.0
+    return samples, avg_acceptance
 
 
 def _run_chain_worker(
@@ -145,7 +141,7 @@ def _run_chain_worker(
         float | None,
         float,
     ],
-) -> tuple[dict[str, list[float]], int]:
+) -> tuple[dict[str, list[float]], float]:
     """
     Worker function for parallel chain execution.
 
@@ -178,22 +174,27 @@ def _run_chain_worker(
     # Create sampler
     kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
     sampler_instance: Sampler = _SAMPLERS[sampler_name](**kwargs)
+    sampler_instance.initialize([chain_initial], log_prob_fn)
 
-    # Run chain (progress=False in workers to avoid stderr conflicts)
-    return _run_chain(
+    # Run chain
+    chain_samples, accept_rate = _run_sampler(
         sampler_instance,
-        chain_initial,
         log_prob_fn,
         num_warmup,
         num_samples,
         rng,
         flat_param_names,
-        chain_idx,
-        num_chains,
-        progress=False,
+        progress=False,  # Disable progress in workers
+        progress_prefix="",
         timeout=timeout,
         start_time=start_time,
     )
+
+    # Flatten from [1][num_samples] to [num_samples]
+    flat_samples: dict[str, list[float]] = {
+        name: chain_samples[name][0] for name in flat_param_names
+    }
+    return flat_samples, accept_rate
 
 
 def sample(
@@ -227,13 +228,15 @@ def sample(
     num_warmup : int
         Number of warmup/tuning samples (discarded).
     num_chains : int
-        Number of independent chains.
+        Number of independent chains. For ensemble sampler, this is the
+        number of walkers (must be even and >= 2*ndim).
     parallel : bool
         If True and num_chains > 1, run chains in parallel using processes.
         Requires log_likelihood to be a module-level function (not a lambda).
+        Ignored for ensemble sampler (walkers run in single process).
         Default: False.
     sampler : str
-        One of: "mh", "adaptive_mh".
+        One of: "mh", "adaptive_mh", "ensemble".
     sampler_kwargs : dict, optional
         Additional arguments passed to sampler.
     seed : int, optional
@@ -269,7 +272,6 @@ def sample(
     rng: np.random.Generator = ensure_rng(seed)
 
     # Get parameter names from model
-    # Samplers work with flat params, results are structured
     flat_param_names: list[str] = model.flat_param_names
     structured_param_names: list[str] = model.param_names
     param_info = model.param_info
@@ -278,79 +280,177 @@ def sample(
     def log_prob_fn(p: dict[str, float]) -> float:
         return model.log_prob_unconstrained(p, data)
 
-    # Create child RNGs for each chain
-    child_rngs: list[np.random.Generator] = list(rng.spawn(num_chains))
+    # Create sampler
+    kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
+    sampler_instance: Sampler = _SAMPLERS[sampler](**kwargs)
 
-    # Run chains (parallel or sequential)
-    if parallel and num_chains > 1:
-        # Parallel execution using processes (true parallelism)
-        # Note: log_likelihood must be a module-level function for pickling
-        worker_args = [
-            (
-                model,
-                data,
-                initial,
-                sampler,
-                sampler_kwargs,
-                num_warmup,
-                num_samples,
-                child_rngs[i],
-                flat_param_names,
-                i,
-                num_chains,
-                timeout,
-                start_time,
+    # Determine number of chains/walkers and initialize
+    if sampler == "ensemble":
+        ndim: int = len(flat_param_names)
+        # Default to 2*ndim walkers if num_chains == 1
+        num_walkers: int = num_chains if num_chains > 1 else max(2 * ndim, 4)
+        # Validate
+        if num_walkers % 2 != 0:
+            raise ModelSpecError("num_chains must be even for ensemble sampler")
+        if num_walkers < 2 * ndim:
+            raise ModelSpecError(
+                f"num_chains must be >= 2*ndim ({2 * ndim}) for ensemble sampler"
             )
-            for i in range(num_chains)
-        ]
-
-        if progress:
-            sys.stderr.write(f"Running {num_chains} chains in parallel...\n")
-
-        try:
-            with ProcessPoolExecutor(max_workers=num_chains) as executor:
-                results = list(executor.map(_run_chain_worker, worker_args))
-        except BrokenExecutor as e:
-            # Workers crashed during unpickling - likely due to unpicklable log_likelihood
-            raise SamplingError(
-                "Parallel sampling failed: log_likelihood must be a module-level "
-                "function defined in an importable .py file (not a lambda, closure, "
-                "or function defined in a notebook/__main__). "
-                "Use parallel=False for notebooks."
-            ) from e
+        # Initialize from prior samples
+        initial_states: list[dict[str, float]] = []
+        for _ in range(num_walkers):
+            constrained: StructuredParams = model.sample_prior(rng)
+            initial_states.append(model.to_flat_unconstrained(constrained))
+        sampler_instance.initialize(initial_states, log_prob_fn)
+        num_chains = num_walkers  # Update for result
+        progress_prefix: str = ""
     else:
-        # Sequential execution (supports closures/lambdas)
-        kwargs: dict[str, object] = sampler_kwargs if sampler_kwargs is not None else {}
+        # Single-chain samplers: run each chain independently
+        if num_chains > 1:
+            all_samples_flat: dict[str, list[list[float]]] = {name: [] for name in flat_param_names}
+            acceptance_rates: list[float] = []
+            child_rngs: list[np.random.Generator] = list(rng.spawn(num_chains))
 
-        def run_one_chain(chain_idx: int) -> tuple[dict[str, list[float]], int]:
-            chain_rng = child_rngs[chain_idx]
-            chain_initial = _get_initial_state(model, initial, data, chain_rng)
-            sampler_instance: Sampler = _SAMPLERS[sampler](**kwargs)
-            return _run_chain(
-                sampler_instance,
-                chain_initial,
-                log_prob_fn,
-                num_warmup,
-                num_samples,
-                chain_rng,
+            if parallel:
+                # Parallel execution using processes
+                worker_args = [
+                    (
+                        model,
+                        data,
+                        initial,
+                        sampler,
+                        sampler_kwargs,
+                        num_warmup,
+                        num_samples,
+                        child_rngs[i],
+                        flat_param_names,
+                        i,
+                        num_chains,
+                        timeout,
+                        start_time,
+                    )
+                    for i in range(num_chains)
+                ]
+
+                if progress:
+                    sys.stderr.write(f"Running {num_chains} chains in parallel...\n")
+
+                try:
+                    with ProcessPoolExecutor(max_workers=num_chains) as executor:
+                        results = list(executor.map(_run_chain_worker, worker_args))
+                except BrokenExecutor as e:
+                    raise SamplingError(
+                        "Parallel sampling failed: log_likelihood must be a module-level "
+                        "function defined in an importable .py file (not a lambda, closure, "
+                        "or function defined in a notebook/__main__). "
+                        "Use parallel=False for notebooks."
+                    ) from e
+
+                for chain_samples, accept_rate in results:
+                    for name in flat_param_names:
+                        all_samples_flat[name].append(chain_samples[name])
+                    acceptance_rates.append(accept_rate)
+            else:
+                # Sequential execution
+                for chain_idx in range(num_chains):
+                    chain_rng = child_rngs[chain_idx]
+                    chain_initial = _get_initial_state(model, initial, data, chain_rng)
+                    chain_sampler: Sampler = _SAMPLERS[sampler](**kwargs)
+                    chain_sampler.initialize([chain_initial], log_prob_fn)
+
+                    chain_result: tuple[dict[str, list[list[float]]], float] = _run_sampler(
+                        chain_sampler,
+                        log_prob_fn,
+                        num_warmup,
+                        num_samples,
+                        chain_rng,
+                        flat_param_names,
+                        progress,
+                        f"Chain {chain_idx + 1}/{num_chains} ",
+                        timeout,
+                        start_time,
+                    )
+                    chain_samples_nested: dict[str, list[list[float]]] = chain_result[0]
+                    chain_accept_rate: float = chain_result[1]
+
+                    for name in flat_param_names:
+                        all_samples_flat[name].append(chain_samples_nested[name][0])
+                    acceptance_rates.append(chain_accept_rate)
+
+            # Return early since we already ran all chains
+            elapsed_time: float = time.perf_counter() - start_time
+            if progress:
+                sys.stderr.write(f"Sampling complete in {elapsed_time:.2f}s\n")
+
+            return _build_result(
+                all_samples_flat,
+                acceptance_rates,
+                model,
+                structured_param_names,
                 flat_param_names,
-                chain_idx,
+                param_info,
+                num_samples,
+                num_warmup,
                 num_chains,
-                progress,
-                timeout,
-                start_time,
+                sampler,
+                elapsed_time,
             )
 
-        results = [run_one_chain(i) for i in range(num_chains)]
+        # Single chain: initialize and run
+        chain_initial = _get_initial_state(model, initial, data, rng)
+        sampler_instance.initialize([chain_initial], log_prob_fn)
+        progress_prefix = ""
 
-    # Collect flat samples
-    all_samples_flat: dict[str, list[list[float]]] = {name: [] for name in flat_param_names}
-    acceptance_rates: list[float] = []
-    for chain_samples, accepts in results:
-        for name in flat_param_names:
-            all_samples_flat[name].append(chain_samples[name])
-        acceptance_rates.append(accepts / num_samples)
+    # Run sampler (unified path for ensemble and single chain with num_chains=1)
+    all_samples_flat, avg_acceptance = _run_sampler(
+        sampler_instance,
+        log_prob_fn,
+        num_warmup,
+        num_samples,
+        rng,
+        flat_param_names,
+        progress,
+        progress_prefix,
+        timeout,
+        start_time,
+    )
 
+    # Build acceptance rates array
+    acceptance_rates = [avg_acceptance] * num_chains
+
+    elapsed_time = time.perf_counter() - start_time
+    if progress:
+        sys.stderr.write(f"Sampling complete in {elapsed_time:.2f}s\n")
+
+    return _build_result(
+        all_samples_flat,
+        acceptance_rates,
+        model,
+        structured_param_names,
+        flat_param_names,
+        param_info,
+        num_samples,
+        num_warmup,
+        num_chains,
+        sampler,
+        elapsed_time,
+    )
+
+
+def _build_result(
+    all_samples_flat: dict[str, list[list[float]]],
+    acceptance_rates: list[float],
+    model: Model,
+    structured_param_names: list[str],
+    flat_param_names: list[str],
+    param_info: dict[str, ParamInfo],
+    num_samples: int,
+    num_warmup: int,
+    num_chains: int,
+    sampler: str,
+    elapsed_time: float,
+) -> InferenceResult:
+    """Build InferenceResult from flat samples."""
     # Convert flat samples to arrays
     flat_samples_unc: dict[str, NDArray[np.float64]] = {}
     for name in flat_param_names:
@@ -361,7 +461,7 @@ def sample(
     samples_unconstrained: dict[str, NDArray[np.float64]] = {}
     samples_constrained: dict[str, NDArray[np.float64]] = {}
 
-    # Get unconstrained sizes from model (may differ from info.size for matrix params)
+    # Get unconstrained sizes from model
     unconstrained_sizes = model._unconstrained_sizes
 
     for name in structured_param_names:
@@ -370,17 +470,14 @@ def sample(
 
         if info.is_vector:
             # Vector/matrix param: gather theta[0], theta[1], ...
-            # Use unconstrained size (may differ for matrix params with transforms)
             unc_size = unconstrained_sizes[name]
             unc_list: list[NDArray[np.float64]] = []
             for i in range(unc_size):
                 flat_name = f"{name}[{i}]"
                 unc_list.append(flat_samples_unc[flat_name])
-            # Stack: each is (chains, samples), stack to (chains, samples, unc_size)
             unc_arr: NDArray[np.float64] = np.stack(unc_list, axis=-1)
             samples_unconstrained[name] = unc_arr
-            # Transform: inverse maps unconstrained back to constrained
-            # For matrix params, this may reshape from (chains, samples, unc_size) to (chains, samples, d, d)
+            # Transform to constrained
             constrained_samples: list[NDArray[np.float64]] = []
             for chain_idx in range(num_chains):
                 chain_constrained: list[NDArray[np.float64]] = []
@@ -397,13 +494,8 @@ def sample(
             samples_unconstrained[name] = unc_arr
             samples_constrained[name] = transform.inverse(unc_arr)
 
-    # Build acceptance rate - always array for consistency
+    # Build acceptance rate array
     acceptance_rate: NDArray[np.float64] = np.array(acceptance_rates, dtype=np.float64)
-
-    elapsed_time: float = time.perf_counter() - start_time
-
-    if progress:
-        sys.stderr.write(f"Sampling complete in {elapsed_time:.2f}s\n")
 
     return InferenceResult(
         samples=samples_constrained,
