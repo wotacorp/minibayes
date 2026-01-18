@@ -194,8 +194,12 @@ Before committing:
 | `results.py` (waic method) | ✓ Done | result.waic() convenience method |
 | `viz/plots.py` (plot_compare) | ✓ Done | Model comparison visualization |
 
+| **v0.5.2 Memory Safety** | | |
+| `inference.py` (limits) | ✓ Done | `max_samples` (default 100k) and `max_memory_mb` (default 1000 MB) parameters |
+| `inference.py` (pre-alloc) | ✓ Done | Pre-allocated numpy arrays instead of list append for memory efficiency |
+
 | **Deferred** | | |
 | HMC/NUTS | Not planned | See minibayes-spec.md "Design Decisions" for rationale |
 | Binomial, NegativeBinomial, Categorical | Deferred | Originally planned for v0.5 |
 
-**v0.5.1 complete.** WAIC model comparison with pointwise log-likelihood API.
+**v0.5.2 complete.** Memory safety with configurable limits and pre-allocation.
