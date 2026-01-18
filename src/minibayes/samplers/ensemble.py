@@ -35,7 +35,8 @@ class EnsembleSampler(Sampler):
             raise ModelSpecError("stretch_scale must be > 1.0")
 
         self._a: float = stretch_scale
-        self._log_probs: NDArray[np.float64] | None = None
+        # Ensemble uses NDArray for efficiency (overrides base class list type)
+        self._log_probs: NDArray[np.float64] | None = None  # type: ignore[assignment]
         self._positions: NDArray[np.float64] | None = None  # Cached walker positions
         self._param_names: list[str] | None = None
         self._accept_count: int = 0

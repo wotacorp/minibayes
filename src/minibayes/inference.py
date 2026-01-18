@@ -140,14 +140,17 @@ def _run_sampler(
     }
     total_accept_rate: float = 0.0
 
+    # Get param names from sampler for efficient array access
+    sampler_param_names: list[str] = sampler.get_param_names()
+
     with ProgressBar(num_samples, desc=f"{progress_prefix}[Sampling]", disable=not progress) as pbar:
         for step_num in range(num_samples):
             accept_rate: float = sampler.advance(log_prob_fn, rng)
             total_accept_rate += accept_rate
-            states: list[dict[str, float]] = sampler.get_states()
-            for k, state in enumerate(states):
-                for name in flat_param_names:
-                    samples[name][k, step_num] = state[name]
+            # Use vectorized array access instead of dict copying
+            positions: NDArray[np.float64] = sampler.get_positions()
+            for j, name in enumerate(sampler_param_names):
+                samples[name][:, step_num] = positions[:, j]
             pbar.update()
             if step_num % check_interval == 0:
                 check_timeout()

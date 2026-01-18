@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class Sampler(ABC):
@@ -26,6 +27,11 @@ class Sampler(ABC):
     def __init__(self) -> None:
         self._states: list[dict[str, float]] = []
         self._log_prob_fn: Callable[[dict[str, float]], float] | None = None
+        # Cached log_probs for each chain (avoids recomputing on rejected proposals)
+        self._log_probs: list[float] = []
+        # Positions array for efficient extraction (num_chains, num_params)
+        self._positions: NDArray[np.float64] | None = None
+        self._param_names: list[str] | None = None
 
     # -------------------------------------------------------------------------
     # Stateless interface (caller manages state)
@@ -118,6 +124,17 @@ class Sampler(ABC):
         """
         self._states = [s.copy() for s in initial_states]
         self._log_prob_fn = log_prob_fn
+        # Initialize log_prob cache
+        self._log_probs = [log_prob_fn(s) for s in self._states]
+        # Initialize positions array for efficient extraction
+        if initial_states:
+            self._param_names = list(initial_states[0].keys())
+            n_chains: int = len(initial_states)
+            n_params: int = len(self._param_names)
+            self._positions = np.empty((n_chains, n_params), dtype=np.float64)
+            for i, state in enumerate(initial_states):
+                for j, name in enumerate(self._param_names):
+                    self._positions[i, j] = state[name]
 
     def advance(
         self,
@@ -157,6 +174,10 @@ class Sampler(ABC):
             else:
                 new_state, accepted = self.step(self._states[i], log_prob_fn, rng)
             self._states[i] = new_state
+            # Update positions array
+            if self._positions is not None and self._param_names is not None:
+                for j, name in enumerate(self._param_names):
+                    self._positions[i, j] = new_state[name]
             accepts += int(accepted)
 
         return accepts / len(self._states)
@@ -171,6 +192,33 @@ class Sampler(ABC):
             List of current states for each chain.
         """
         return [s.copy() for s in self._states]
+
+    def get_positions(self) -> NDArray[np.float64]:
+        """
+        Get current positions as a numpy array.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Positions array with shape (num_chains, num_params).
+            This is a view, not a copy.
+        """
+        if self._positions is None:
+            raise RuntimeError("Sampler not initialized. Call initialize() first.")
+        return self._positions
+
+    def get_param_names(self) -> list[str]:
+        """
+        Get parameter names in order matching get_positions() columns.
+
+        Returns
+        -------
+        list[str]
+            Parameter names.
+        """
+        if self._param_names is None:
+            raise RuntimeError("Sampler not initialized. Call initialize() first.")
+        return self._param_names
 
     @property
     def num_chains(self) -> int:
