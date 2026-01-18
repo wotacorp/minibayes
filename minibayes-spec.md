@@ -1,4 +1,4 @@
-# minibayes Specification v0.4
+# minibayes Specification v0.5
 
 ## Overview
 
@@ -29,28 +29,26 @@
 - Time series distributions (custom likelihood sufficient)
 - Deep Bayesian networks
 
-### Scope Limitations (Current: v0.4)
+### Scope Limitations (Current: v0.5)
 
 **Current version supports hierarchical models with:**
 - Vector parameters via `size=` argument
 - Conditional priors (distributions depending on other parameters)
 - The `p(...)` API for defining priors
+- Affine-invariant ensemble sampler (emcee-style) for better mixing
+- MultivariateNormal and LKJCholesky distributions for correlated parameters
 
 This covers:
 - Linear / logistic / Poisson regression
 - A/B testing and conversion models
 - Hierarchical/multilevel models (partial pooling)
 - Mixed effects models
+- Correlation matrix estimation
 
 **Planned for future versions:**
-- v0.5: Affine-invariant ensemble sampler (emcee-style) for better mixing
 - v0.6: Wishart/InverseWishart for covariance estimation
-- v0.7: Gaussian processes
-
-**Added in v0.4.1:**
-- MultivariateNormal distribution (for likelihoods with correlated outcomes)
-- LKJCholesky distribution for correlation matrix priors
-- Matrix parameter support (`shape=` parameter in p())
+- v0.7: Mixtures & clustering (Dirichlet, ZeroInflated distributions)
+- v0.8: Gaussian processes
 
 ### Target Users
 
@@ -66,22 +64,36 @@ This covers:
 minibayes/
 ├── __init__.py           # Public API exports
 ├── model.py              # Model class
+├── params.py             # ParamContext for p(...) API
+├── inference.py          # sample() entry point
+├── results.py            # InferenceResult class
+├── predictive.py         # Posterior/prior predictive sampling
+├── diagnostics.py        # ESS, R-hat, summary
+├── comparison.py         # WAIC model comparison
+├── exceptions.py         # Custom exceptions
 ├── distributions/
 │   ├── __init__.py       # Distribution exports
 │   ├── base.py           # Abstract base class + Support enum
-│   ├── continuous.py     # Normal, HalfNormal, Beta, Gamma, etc.
-│   └── discrete.py       # Bernoulli, Poisson, Categorical
+│   ├── normal.py         # Normal, plus individual files for each distribution
+│   └── ...               # 15 distributions total (see Distributions section)
 ├── samplers/
 │   ├── __init__.py       # Sampler exports
 │   ├── base.py           # Abstract sampler interface
 │   ├── mh.py             # Random walk Metropolis-Hastings
 │   ├── adaptive.py       # Adaptive Metropolis
-│   └── hmc.py            # Hamiltonian Monte Carlo (v0.4+)
-├── transforms.py         # Parameter transforms (log, logit, etc.)
-├── diagnostics.py        # ESS, R-hat, trace plots
-├── results.py            # InferenceResult class
-├── export.py             # Save/load results
-└── utils.py              # Numerical utilities
+│   └── ensemble.py       # Affine-invariant ensemble (emcee-style)
+├── transforms/
+│   ├── __init__.py       # Transform exports
+│   ├── base.py           # Abstract transform interface
+│   ├── identity.py       # IdentityTransform (REAL)
+│   ├── log.py            # LogTransform (POSITIVE)
+│   ├── logit.py          # LogitTransform (UNIT)
+│   ├── affine.py         # AffineTransform (BOUNDED)
+│   └── corr_cholesky.py  # CorrCholeskyTransform (LKJCholesky)
+└── utils/
+    ├── numerical.py      # ensure_rng, log_sum_exp
+    ├── export.py         # save_npz, load_npz, to_json
+    └── progress.py       # Progress bar utilities
 ```
 
 ---
@@ -165,7 +177,7 @@ def sample(
     num_chains : int
         Number of independent chains
     sampler : str
-        One of: "mh", "adaptive_mh", "hmc" (v0.4+)
+        One of: "mh", "adaptive_mh", "ensemble"
     sampler_kwargs : dict, optional
         Additional arguments passed to sampler
     seed : int, optional
@@ -766,33 +778,36 @@ class AdaptiveMetropolis(Sampler):
         """
 ```
 
-#### HamiltonianMonteCarlo (v0.4+)
+#### EnsembleSampler
 
 ```python
-class HamiltonianMonteCarlo(Sampler):
+class EnsembleSampler(Sampler):
     """
-    Hamiltonian Monte Carlo sampler.
+    Affine-invariant ensemble sampler (Goodman & Weare 2010).
 
-    Requires gradients of log_prob. If not provided, uses finite differences.
+    Uses multiple walkers that move together, with stretch moves
+    that adapt naturally to the posterior geometry. Excellent for
+    multimodal distributions and correlated parameters.
     """
 
     def __init__(
         self,
-        step_size: float = 0.1,
-        num_leapfrog_steps: int = 10,
-        grad_log_prob: Callable | None = None,
+        n_walkers: int = 32,
+        a: float = 2.0,
     ):
         """
         Parameters
         ----------
-        step_size : float
-            Leapfrog integrator step size
-        num_leapfrog_steps : int
-            Number of leapfrog steps per proposal
-        grad_log_prob : Callable, optional
-            Gradient function. If None, uses finite differences.
+        n_walkers : int
+            Number of walkers (must be even, >= 2 * ndim recommended)
+        a : float
+            Stretch move scale parameter (default 2.0, must be > 1.0)
         """
 ```
+
+> **Note**: HMC/NUTS samplers are intentionally not included in minibayes.
+> See the "Design Decisions" section for rationale. For high-dimensional
+> problems requiring gradient-based sampling, we recommend NumPyro or PyMC.
 
 ---
 
@@ -867,9 +882,11 @@ class ModelSpecError(minibayesError):
 - [x] 3D sample arrays for vector params: `(chains, samples, size)`
 - [x] Diagnostics and predictive sampling for vector params
 
-### v0.5 — "Better Mixing" (Gradient-Free)
+### v0.5 — COMPLETE (Better Mixing)
 **Use case: Improved sampling for moderate-dimensional models**
-- [ ] Affine-invariant ensemble sampler (emcee-style, good for multimodal)
+- [x] Affine-invariant ensemble sampler (emcee-style, good for multimodal)
+
+*Deferred from v0.5:*
 - [ ] Binomial distribution
 - [ ] NegativeBinomial distribution
 - [ ] Categorical distribution

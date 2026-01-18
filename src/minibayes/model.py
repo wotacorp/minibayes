@@ -38,7 +38,7 @@ class Model:
     ...     theta = p("theta", dist.Normal(mu, tau), size=8)
     >>>
     >>> def log_likelihood(params, data):
-    ...     return dist.Normal(params["theta"], data["sigma"]).obs_logp(data["y"])
+    ...     return dist.Normal(params["theta"], data["sigma"]).log_prob(data["y"])
     >>>
     >>> model = Model(priors=priors, log_likelihood=log_likelihood)
     """
@@ -46,7 +46,7 @@ class Model:
     def __init__(
         self,
         priors: Callable[[ParamContext], None],
-        log_likelihood: Callable[[StructuredParams, object], float],
+        log_likelihood: Callable[[StructuredParams, object], NDArray[np.float64]],
     ) -> None:
         self._priors_fn = priors
         self._log_likelihood_fn = log_likelihood
@@ -154,9 +154,9 @@ class Model:
         self._priors_fn(ctx)
         return ctx.log_prob
 
-    def log_likelihood(self, params: StructuredParams, data: object) -> float:
+    def log_likelihood(self, params: StructuredParams, data: object) -> NDArray[np.float64]:
         """
-        Compute log likelihood.
+        Compute pointwise log likelihood.
 
         Parameters
         ----------
@@ -167,8 +167,8 @@ class Model:
 
         Returns
         -------
-        float
-            Log likelihood value.
+        NDArray[np.float64]
+            Pointwise log likelihood values, shape (n_obs,).
         """
         return self._log_likelihood_fn(params, data)
 
@@ -189,7 +189,8 @@ class Model:
             Log posterior (unnormalized).
         """
         lp: float = self.log_prior(params)
-        ll: float = self.log_likelihood(params, data)
+        ll_pointwise: NDArray[np.float64] = self.log_likelihood(params, data)
+        ll: float = float(np.sum(ll_pointwise))
         return lp + ll
 
     # -------------------------------------------------------------------------

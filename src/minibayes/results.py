@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 
     from numpy.typing import ArrayLike
 
+    from minibayes.comparison import WAICResult
+    from minibayes.model import Model
+
 
 @dataclass
 class InferenceResult:
@@ -160,6 +163,32 @@ class InferenceResult:
         from minibayes.predictive import sample_posterior_predictive
 
         return sample_posterior_predictive(self, predictive_fn, num_samples, seed)
+
+    def waic(self, model: Model, data: object) -> WAICResult:
+        """
+        Compute WAIC (Widely Applicable Information Criterion).
+
+        Convenience method that calls minibayes.waic().
+
+        Parameters
+        ----------
+        model : Model
+            Model used for sampling.
+        data : object
+            Observed data passed to log_likelihood.
+
+        Returns
+        -------
+        WAICResult
+            WAIC, p_waic, lppd, standard error, and pointwise values.
+
+        See Also
+        --------
+        minibayes.waic : Full documentation.
+        """
+        from minibayes.comparison import waic as compute_waic
+
+        return compute_waic(self, model, data)
 
     def to_dict(self) -> dict[str, object]:
         """

@@ -20,10 +20,14 @@ import minibayes as mb
 from minibayes import dist
 
 # Define model
-model = mb.Model(
-    priors={"mu": dist.Normal(0, 10), "sigma": dist.HalfNormal(5)},
-    log_likelihood=lambda p, d: dist.Normal(p["mu"], p["sigma"]).obs_logp(d),
-)
+def priors(p):
+    p("mu", dist.Normal(0, 10))
+    p("sigma", dist.HalfNormal(5))
+
+def log_likelihood(params, data):
+    return dist.Normal(params["mu"], params["sigma"]).log_prob(data)  # returns array
+
+model = mb.Model(priors=priors, log_likelihood=log_likelihood)
 
 # Run inference
 result = mb.sample(model, data=y, num_samples=2000, num_chains=2, seed=42)
@@ -38,16 +42,21 @@ result.save("posterior.npz")
 The structured way to define Bayesian models. Priors and log-likelihood are specified separately.
 
 ```python
-model = mb.Model(
-    priors={"mu": dist.Normal(0, 10), "sigma": dist.HalfNormal(5)},
-    log_likelihood=lambda params, data: dist.Normal(params["mu"], params["sigma"]).obs_logp(data),
-)
+def priors(p):
+    p("mu", dist.Normal(0, 10))
+    p("sigma", dist.HalfNormal(5))
+
+def log_likelihood(params, data):
+    # Must return pointwise array of shape (n_obs,)
+    return dist.Normal(params["mu"], params["sigma"]).log_prob(data)
+
+model = mb.Model(priors=priors, log_likelihood=log_likelihood)
 
 # Inspect (no magic - everything is explicit)
 model.param_names                       # ['mu', 'sigma']
 model.transforms                        # {'mu': Identity, 'sigma': Log}
 model.sample_prior()                    # {'mu': 2.3, 'sigma': 1.8}
-model.log_prob({"mu": 0, "sigma": 1}, data)  # float
+model.log_prob({"mu": 0, "sigma": 1}, data)  # float (sums pointwise ll)
 ```
 
 ### Core Methods
@@ -59,7 +68,7 @@ model.log_prob({"mu": 0, "sigma": 1}, data)  # float
 | `sample_prior(rng)` | Draw one sample from the joint prior |
 | `prior_means()` | Return mean of each prior distribution |
 | `log_prior(params)` | Sum of log_prob for each prior |
-| `log_likelihood(params, data)` | User-provided likelihood function |
+| `log_likelihood(params, data)` | Pointwise log-likelihood (returns array of shape n_obs) |
 | `log_prob(params, data)` | log_prior + log_likelihood (unnormalized posterior) |
 | `to_unconstrained(params)` | Transform constrained → unconstrained space |
 | `to_constrained(unconstrained)` | Transform unconstrained → constrained space |
@@ -85,19 +94,15 @@ All distributions provide these methods:
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `log_prob(x)` | array or float | Element-wise log probability density |
-| `obs_logp(data)` | float | Sum of log_prob (for observed data) |
+| `log_prob(x)` | array | Element-wise log probability density (shape matches input) |
 | `sample(size, rng)` | array or float | Random samples |
 | `mean` | float | Mean (expected value) |
 
-The `obs_logp()` method simplifies likelihood functions:
+**Important**: The `log_likelihood` function must return a pointwise array (one value per observation). This enables model comparison with WAIC:
 
 ```python
-# Before (verbose)
-return float(np.sum(dist.Normal(mu, sigma).log_prob(y)))
-
-# After (cleaner)
-return dist.Normal(mu, sigma).obs_logp(y)
+def log_likelihood(params, data):
+    return dist.Normal(params["mu"], params["sigma"]).log_prob(data)  # shape (n_obs,)
 ```
 
 ## The sample() Function
@@ -205,17 +210,20 @@ a module-level function (not a lambda or closure). This is required for
 multiprocessing.
 
 ```python
-# ❌ Won't work with parallel=True
+# ❌ Won't work with parallel=True (lambdas can't be pickled)
+def priors(p):
+    p("mu", dist.Normal(0, 10))
+
 model = mb.Model(
-    priors={"mu": dist.Normal(0, 10)},
-    log_likelihood=lambda p, d: dist.Normal(p["mu"], 1).obs_logp(d),
+    priors=priors,
+    log_likelihood=lambda p, d: dist.Normal(p["mu"], 1).log_prob(d),
 )
 
-# ✅ Works with parallel=True
+# ✅ Works with parallel=True (module-level functions)
 def my_likelihood(params, data):
-    return dist.Normal(params["mu"], 1).obs_logp(data)
+    return dist.Normal(params["mu"], 1).log_prob(data)
 
-model = mb.Model(priors={"mu": dist.Normal(0, 10)}, log_likelihood=my_likelihood)
+model = mb.Model(priors=priors, log_likelihood=my_likelihood)
 ```
 
 Sequential mode (`parallel=False`, the default) works with both lambdas and
@@ -275,6 +283,55 @@ from minibayes.diagnostics import effective_sample_size, r_hat
 ess = effective_sample_size(result.samples["mu"])  # Single chain
 rhat = r_hat(result.samples["mu"])  # Multi-chain: shape (num_chains, num_samples)
 ```
+
+## Model Comparison (WAIC)
+
+WAIC (Widely Applicable Information Criterion) estimates out-of-sample predictive accuracy for model comparison.
+
+```python
+# Compute WAIC for a fitted model
+waic_result = result.waic(model, data)
+# or: waic_result = mb.waic(result, model, data)
+
+print(f"WAIC: {waic_result.waic:.1f}")
+print(f"p_waic: {waic_result.p_waic:.1f}")  # Effective number of parameters
+```
+
+### WAICResult Fields
+
+| Field | Description |
+|-------|-------------|
+| `waic` | WAIC value (lower = better predictive accuracy) |
+| `p_waic` | Effective number of parameters (complexity penalty) |
+| `lppd` | Log pointwise predictive density (model fit) |
+| `se` | Standard error of WAIC estimate |
+| `pointwise` | Per-observation contributions (shape: n_obs) |
+
+### Comparing Multiple Models
+
+```python
+from minibayes import viz
+
+# Fit competing models
+result_simple = mb.sample(model_simple, data, ...)
+result_complex = mb.sample(model_complex, data, ...)
+
+# Compute WAIC for each
+waic_results = {
+    "Simple": result_simple.waic(model_simple, data),
+    "Complex": result_complex.waic(model_complex, data),
+}
+
+# Visualize comparison (models ranked by WAIC, error bars show ±2 SE)
+fig = viz.plot_compare(waic_results)
+```
+
+### Interpretation
+
+- **Lower WAIC is better** (like AIC/BIC)
+- **p_waic ≈ parameter count** for well-specified models
+- **ΔWAIC < 2×SE**: Models are statistically similar
+- **Pointwise values**: Identify influential observations
 
 ## Saving and Loading
 

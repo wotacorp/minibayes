@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
+    from minibayes.comparison import WAICResult
     from minibayes.distributions.base import Distribution
     from minibayes.results import InferenceResult
 
@@ -827,6 +828,108 @@ def plot_pair(
     ax_plot.set_ylabel(name_y, fontsize=10, color="#4A4A4A")
     ax_plot.set_title(f"Joint Posterior: {name_x} vs {name_y}", fontsize=11, color="#4A4A4A")
     ax_plot.legend(fontsize=8, frameon=False)
+
+    plt.tight_layout()
+    return fig_out
+
+
+def plot_compare(
+    waic_results: dict[str, WAICResult],
+    ax: Axes | None = None,
+) -> Figure:
+    """
+    Plot model comparison with WAIC values and error bars.
+
+    Displays models ranked by WAIC (best at top) with point estimates
+    and ±2 standard error intervals.
+
+    Parameters
+    ----------
+    waic_results : dict[str, WAICResult]
+        Mapping of model names to WAICResult objects.
+    ax : Axes, optional
+        Existing axes. If None, creates new figure.
+
+    Returns
+    -------
+    Figure
+        The matplotlib figure.
+
+    Examples
+    --------
+    >>> waic1 = result1.waic(model1, data)
+    >>> waic2 = result2.waic(model2, data)
+    >>> fig = viz.plot_compare({"model_1": waic1, "model_2": waic2})
+    """
+    import matplotlib.pyplot as plt
+
+    model_names = list(waic_results.keys())
+    n_models = len(model_names)
+
+    # Sort by WAIC (ascending - best first)
+    sorted_items = sorted(waic_results.items(), key=lambda x: x[1].waic)
+    sorted_names: list[str] = [name for name, _ in sorted_items]
+    sorted_results: list[WAICResult] = [result for _, result in sorted_items]
+
+    waic_values: NDArray[np.float64] = np.array(
+        [r.waic for r in sorted_results], dtype=np.float64
+    )
+    se_values: NDArray[np.float64] = np.array(
+        [r.se for r in sorted_results], dtype=np.float64
+    )
+
+    # Delta-WAIC from best model
+    best_waic: float = float(waic_values[0])
+    delta_waic: NDArray[np.float64] = waic_values - best_waic
+
+    # Create figure if needed
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=(8, max(2.5, 0.6 * n_models)))
+        ax_plot = cast("Axes", ax_plot)
+        fig_out: Figure = cast("Figure", fig)
+    else:
+        fig_out = cast("Figure", ax.figure)
+        ax_plot = ax
+
+    _apply_style_to_fig(fig_out)
+    _style_axes(ax_plot)
+
+    # Y positions (reversed so best is at top)
+    y_pos: NDArray[np.float64] = np.arange(n_models, dtype=np.float64)
+
+    # Plot error bars (±2 SE)
+    ax_plot.errorbar(
+        waic_values,
+        y_pos,
+        xerr=2 * se_values,
+        fmt="o",
+        color=PALETTE["blue"],
+        ecolor=PALETTE["terracotta"],
+        elinewidth=2,
+        capsize=4,
+        capthick=2,
+        markersize=8,
+        zorder=5,
+    )
+
+    # Add delta-WAIC annotations
+    for i, dwaic in enumerate(delta_waic):
+        annotation = "Δ=0 (best)" if i == 0 else f"Δ={dwaic:.1f}"
+        ax_plot.annotate(
+            annotation,
+            xy=(float(waic_values[i]) + 2 * float(se_values[i]) + 1, float(y_pos[i])),
+            fontsize=8,
+            color="#666666",
+            va="center",
+        )
+
+    ax_plot.set_yticks(y_pos)
+    ax_plot.set_yticklabels(sorted_names)
+    ax_plot.set_xlabel("WAIC (lower is better)", fontsize=10, color="#4A4A4A")
+    ax_plot.set_title("Model Comparison (WAIC)", fontsize=11, color="#4A4A4A")
+
+    # Invert y-axis so best model is at top
+    ax_plot.invert_yaxis()
 
     plt.tight_layout()
     return fig_out

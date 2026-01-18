@@ -14,16 +14,21 @@ from minibayes.transforms import (
     LogitTransform,
     LogTransform,
 )
+from numpy.typing import NDArray
 
 
-def simple_log_likelihood(params: StructuredParams, data: object) -> float:
-    """Simple log-likelihood for testing: ignores data, returns constant."""
+def simple_log_likelihood(
+    params: StructuredParams, data: object
+) -> NDArray[np.float64]:
+    """Simple log-likelihood for testing: ignores data, returns constant array."""
     del data  # unused
     del params  # unused
-    return -1.0
+    return np.array([-1.0], dtype=np.float64)
 
 
-def normal_log_likelihood(params: StructuredParams, data: object) -> float:
+def normal_log_likelihood(
+    params: StructuredParams, data: object
+) -> NDArray[np.float64]:
     """Normal log-likelihood for linear model."""
     y = data
     if not isinstance(y, np.ndarray):
@@ -35,7 +40,7 @@ def normal_log_likelihood(params: StructuredParams, data: object) -> float:
     if not isinstance(sigma, float):
         sigma = float(sigma)
     d = dist.Normal(loc=mu, scale=sigma)
-    return d.obs_logp(y)
+    return d.log_prob(y)
 
 
 class TestParamContext:
@@ -207,9 +212,11 @@ class TestModel:
 
         call_log: list[tuple[StructuredParams, object]] = []
 
-        def tracking_likelihood(params: StructuredParams, data: object) -> float:
+        def tracking_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             call_log.append((dict(params), data))
-            return -2.5
+            return np.array([-2.5], dtype=np.float64)
 
         model = Model(priors=priors, log_likelihood=tracking_likelihood)
         params: StructuredParams = {"mu": 1.0}
@@ -217,28 +224,32 @@ class TestModel:
 
         result = model.log_likelihood(params, data)
 
-        assert result == -2.5
+        np.testing.assert_allclose(result, np.array([-2.5]))
         assert len(call_log) == 1
         assert call_log[0][0] == params
         assert call_log[0][1] == data
 
     def test_log_prob(self) -> None:
-        """Test log_prob = log_prior + log_likelihood."""
+        """Test log_prob = log_prior + sum(log_likelihood)."""
 
         def priors(p: ParamContext) -> None:
             p("mu", dist.Normal(0, 1))
             p("sigma", dist.HalfNormal(1))
 
-        def fixed_likelihood(params: StructuredParams, data: object) -> float:
+        def fixed_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             del params, data
-            return -5.0
+            return np.array([-5.0], dtype=np.float64)
 
         model = Model(priors=priors, log_likelihood=fixed_likelihood)
         params: StructuredParams = {"mu": 0.0, "sigma": 1.0}
         data = None
 
         result = model.log_prob(params, data)
-        expected = model.log_prior(params) + model.log_likelihood(params, data)
+        expected = model.log_prior(params) + float(
+            np.sum(model.log_likelihood(params, data))
+        )
 
         np.testing.assert_allclose(result, expected, rtol=1e-10)
 
@@ -285,9 +296,11 @@ class TestModel:
         def priors(p: ParamContext) -> None:
             p("sigma", dist.HalfNormal(1))
 
-        def zero_likelihood(params: StructuredParams, data: object) -> float:
+        def zero_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             del params, data
-            return 0.0
+            return np.array([0.0], dtype=np.float64)
 
         model = Model(priors=priors, log_likelihood=zero_likelihood)
 
@@ -395,9 +408,11 @@ class TestModelEdgeCases:
         def priors(p: ParamContext) -> None:
             p("mu", dist.Normal(0, 1))
 
-        def zero_likelihood(params: StructuredParams, data: object) -> float:
+        def zero_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             del params, data
-            return 0.0
+            return np.array([0.0], dtype=np.float64)
 
         model = Model(priors=priors, log_likelihood=zero_likelihood)
 
@@ -503,9 +518,11 @@ class TestHierarchicalModel:
             p("mu", dist.Normal(0, 1))
             p("theta", dist.Normal(0, 1), size=2)
 
-        def zero_likelihood(params: StructuredParams, data: object) -> float:
+        def zero_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             del params, data
-            return 0.0
+            return np.array([0.0], dtype=np.float64)
 
         model = Model(priors=priors, log_likelihood=zero_likelihood)
 
@@ -550,15 +567,17 @@ class TestHierarchicalModel:
             tau = p("tau", dist.HalfNormal(5))
             p("theta", dist.Normal(mu, tau), size=J)
 
-        def log_likelihood(params: StructuredParams, data: object) -> float:
+        def log_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             y, sigma = data
             theta = params["theta"]
             assert isinstance(theta, np.ndarray)
-            # Sum of Normal log-probs
-            lp: float = 0.0
+            # Pointwise Normal log-probs
+            ll: NDArray[np.float64] = np.zeros(J, dtype=np.float64)
             for j in range(J):
-                lp += float(dist.Normal(theta[j], sigma[j]).log_prob(y[j]))
-            return lp
+                ll[j] = float(dist.Normal(theta[j], sigma[j]).log_prob(y[j]))
+            return ll
 
         model = Model(priors=priors, log_likelihood=log_likelihood)
 

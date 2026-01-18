@@ -188,7 +188,14 @@ Before committing:
 | **v0.5 Gradient-Free** | | |
 | `samplers/ensemble.py` | ✓ Done | Affine-invariant ensemble sampler (emcee-style) |
 
+| **v0.5.1 Model Comparison** | | |
+| `comparison.py` | ✓ Done | WAIC, WAICResult dataclass |
+| `model.py` (pointwise ll) | ✓ Done | log_likelihood returns array, log_prob sums |
+| `results.py` (waic method) | ✓ Done | result.waic() convenience method |
+| `viz/plots.py` (plot_compare) | ✓ Done | Model comparison visualization |
+
 | **Deferred** | | |
 | HMC/NUTS | Not planned | See minibayes-spec.md "Design Decisions" for rationale |
+| Binomial, NegativeBinomial, Categorical | Deferred | Originally planned for v0.5 |
 
-**v0.5 complete.** Ensemble sampler implemented with unified stateful interface.
+**v0.5.1 complete.** WAIC model comparison with pointwise log-likelihood API.
