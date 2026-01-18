@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 import minibayes as mb
 from minibayes import dist
@@ -13,17 +14,21 @@ from minibayes.results import InferenceResult
 
 
 # Module-level likelihood functions for parallel testing (must be picklable)
-def _zero_likelihood(params: StructuredParams, data: object) -> float:
+def _zero_likelihood(
+    params: StructuredParams, data: object
+) -> NDArray[np.float64]:
     """A likelihood that always returns 0 (flat)."""
-    return 0.0
+    return np.array([0.0], dtype=np.float64)
 
 
-def _quadratic_likelihood(params: StructuredParams, data: object) -> float:
+def _quadratic_likelihood(
+    params: StructuredParams, data: object
+) -> NDArray[np.float64]:
     """A simple quadratic likelihood centered at 0."""
     x = params["x"]
     if isinstance(x, np.ndarray):
-        return float(-np.sum(x**2))
-    return float(-(x**2))
+        return np.array([-np.sum(x**2)], dtype=np.float64)
+    return np.array([-(x**2)], dtype=np.float64)
 
 
 # Module-level priors function for parallel testing
@@ -43,7 +48,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], 1).log_prob(d))),
+            log_likelihood=lambda p, d: dist.Normal(p["mu"], 1).log_prob(d),
         )
         data = np.array([1.0, 2.0, 3.0])
 
@@ -71,7 +76,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=10, seed=42)
@@ -91,7 +96,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=20, num_chains=1, seed=42)
@@ -112,7 +117,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=20, num_chains=3, seed=42)
@@ -129,7 +134,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, seed=42)
@@ -145,7 +150,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: float(-d * p["x"] ** 2),
+            log_likelihood=lambda p, d: np.array([-d * p["x"] ** 2]),
         )
         data = 1.0
 
@@ -162,7 +167,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result1 = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
@@ -195,7 +200,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: float(np.sum(dist.Normal(p["mu"], sigma).log_prob(d))),
+            log_likelihood=lambda p, d: dist.Normal(p["mu"], sigma).log_prob(d),
         )
 
         # Run MCMC
@@ -224,7 +229,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=100, num_warmup=50, seed=42)
@@ -244,7 +249,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(
@@ -267,7 +272,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         from minibayes.exceptions import ModelSpecError
@@ -283,7 +288,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=10, num_warmup=5, initial={"x": 5.0}, seed=42)
@@ -299,7 +304,7 @@ class TestSample:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
@@ -318,7 +323,7 @@ class TestSampleProgress:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, progress=False, seed=42)
@@ -334,7 +339,7 @@ class TestSampleProgress:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, progress=True, seed=42)
@@ -351,7 +356,7 @@ class TestSampleProgress:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, num_chains=2, progress=True, seed=42)
@@ -372,7 +377,7 @@ class TestSampleTimeout:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=10, num_warmup=5, timeout=None, seed=42)
@@ -386,7 +391,7 @@ class TestSampleTimeout:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=10, num_warmup=5, timeout=60.0, seed=42)
@@ -398,9 +403,11 @@ class TestSampleTimeout:
 
         from minibayes.exceptions import SamplingTimeoutError
 
-        def slow_likelihood(p: StructuredParams, d: object) -> float:
+        def slow_likelihood(
+            p: StructuredParams, d: object
+        ) -> NDArray[np.float64]:
             time_module.sleep(0.05)  # 50ms per step
-            return 0.0
+            return np.array([0.0], dtype=np.float64)
 
         def priors(p: ParamContext) -> None:
             p("x", dist.Normal(0, 1))
@@ -459,7 +466,7 @@ class TestSampleParallel:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=1, parallel=True, seed=42)
@@ -521,7 +528,7 @@ class TestSampleParallel:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         mb.sample(model, num_samples=10, num_warmup=5, progress=True, seed=42)
@@ -542,7 +549,7 @@ class TestVectorParameters:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, seed=42)
@@ -560,7 +567,7 @@ class TestVectorParameters:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         result = mb.sample(model, num_samples=50, num_warmup=20, num_chains=2, seed=42)
@@ -577,13 +584,15 @@ class TestVectorParameters:
             tau = p("tau", dist.HalfNormal(2))
             p("theta", dist.Normal(mu, tau), size=J)
 
-        def log_likelihood(params: StructuredParams, data: object) -> float:
+        def log_likelihood(
+            params: StructuredParams, data: object
+        ) -> NDArray[np.float64]:
             y, sigma = data
             theta = params["theta"]
             assert isinstance(theta, np.ndarray)
-            ll: float = 0.0
+            ll: NDArray[np.float64] = np.zeros(J, dtype=np.float64)
             for j in range(J):
-                ll += float(dist.Normal(theta[j], sigma[j]).log_prob(y[j]))
+                ll[j] = float(dist.Normal(theta[j], sigma[j]).log_prob(y[j]))
             return ll
 
         model = mb.Model(priors=priors, log_likelihood=log_likelihood)

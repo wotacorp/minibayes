@@ -6,6 +6,7 @@ deployment on resource-constrained environments.
 """
 
 from minibayes import distributions as dist
+from minibayes.comparison import WAICResult, waic
 from minibayes.inference import sample
 from minibayes.model import Model
 from minibayes.predictive import sample_posterior_predictive, sample_prior_predictive
@@ -20,5 +21,7 @@ __all__ = [
     "Model",
     "dist",
     "InferenceResult",
+    "waic",
+    "WAICResult",
     "__version__",
 ]

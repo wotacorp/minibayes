@@ -498,3 +498,76 @@ class TestPlotPair:
         single_param = {"a": np.random.randn(2, 100)}
         with pytest.raises(ValueError, match="requires at least 2 parameters"):
             plot_pair(single_param)
+
+
+class TestPlotCompare:
+    """Tests for plot_compare function."""
+
+    def test_plot_compare_returns_figure(self) -> None:
+        """plot_compare returns matplotlib Figure."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.comparison import WAICResult
+        from minibayes.viz import plot_compare
+
+        waic_results = {
+            "model_1": WAICResult(
+                waic=100.0, p_waic=2.0, lppd=-48.0, se=5.0, pointwise=np.array([50.0, 50.0])
+            ),
+            "model_2": WAICResult(
+                waic=110.0, p_waic=3.0, lppd=-51.5, se=6.0, pointwise=np.array([55.0, 55.0])
+            ),
+        }
+
+        fig = plot_compare(waic_results)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_compare_ordering(self) -> None:
+        """Models are ordered by WAIC (best at top)."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.comparison import WAICResult
+        from minibayes.viz import plot_compare
+
+        # model_b has lower (better) WAIC
+        waic_results = {
+            "model_a": WAICResult(
+                waic=120.0, p_waic=3.0, lppd=-57.0, se=5.0, pointwise=np.array([60.0, 60.0])
+            ),
+            "model_b": WAICResult(
+                waic=100.0, p_waic=2.0, lppd=-48.0, se=4.0, pointwise=np.array([50.0, 50.0])
+            ),
+        }
+
+        fig = plot_compare(waic_results)
+        ax = fig.axes[0]
+        # Get y-tick labels to verify ordering
+        labels = [t.get_text() for t in ax.get_yticklabels()]
+        # model_b should be first (at top, which is position 0)
+        assert labels[0] == "model_b"
+        assert labels[1] == "model_a"
+        plt.close(fig)
+
+    def test_plot_compare_single_model(self) -> None:
+        """Works with single model."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.comparison import WAICResult
+        from minibayes.viz import plot_compare
+
+        waic_results = {
+            "only_model": WAICResult(
+                waic=100.0, p_waic=2.0, lppd=-48.0, se=5.0, pointwise=np.array([50.0, 50.0])
+            ),
+        }
+
+        fig = plot_compare(waic_results)
+        assert fig is not None
+        plt.close(fig)

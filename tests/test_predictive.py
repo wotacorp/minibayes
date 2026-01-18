@@ -190,7 +190,7 @@ class TestSamplePriorPredictive:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
@@ -209,7 +209,7 @@ class TestSamplePriorPredictive:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:
@@ -229,7 +229,7 @@ class TestSamplePriorPredictive:
 
         model = mb.Model(
             priors=priors,
-            log_likelihood=lambda p, d: 0.0,
+            log_likelihood=lambda p, d: np.array([0.0]),
         )
 
         def predictive(params: dict[str, float], rng: np.random.Generator) -> dict[str, NDArray[np.float64]]:

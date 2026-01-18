@@ -69,6 +69,7 @@ minibayes/
 ├── results.py            # InferenceResult class
 ├── predictive.py         # Posterior/prior predictive sampling
 ├── diagnostics.py        # ESS, R-hat, summary
+├── comparison.py         # WAIC model comparison
 ├── exceptions.py         # Custom exceptions
 ├── distributions/
 │   ├── __init__.py       # Distribution exports
