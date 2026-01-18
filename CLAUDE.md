@@ -190,5 +190,6 @@ Before committing:
 
 | **Deferred** | | |
 | HMC/NUTS | Not planned | See minibayes-spec.md "Design Decisions" for rationale |
+| Binomial, NegativeBinomial, Categorical | Deferred | Originally planned for v0.5 |
 
 **v0.5 complete.** Ensemble sampler implemented with unified stateful interface.
