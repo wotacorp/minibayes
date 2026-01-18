@@ -6,6 +6,7 @@ import pytest
 
 from minibayes.transforms import (
     AffineTransform,
+    CorrCholeskyTransform,
     IdentityTransform,
     LogitTransform,
     LogTransform,
@@ -200,3 +201,231 @@ class TestAffineTransform:
         phi = t.forward(x)
         assert np.all(np.isfinite(phi))
         npt.assert_allclose(t.inverse(phi), x, rtol=1e-5)
+
+
+def numerical_jacobian_cholesky(
+    transform: CorrCholeskyTransform, chol: np.ndarray, eps: float = 1e-5
+) -> float:
+    """
+    Compute numerical log Jacobian for CorrCholeskyTransform via finite differences.
+
+    Uses central differences on each unconstrained element to estimate
+    the log absolute determinant of the Jacobian of the inverse transform.
+    """
+    y = transform.forward(chol)
+    n_params = len(y)
+    log_det = 0.0
+
+    for i in range(n_params):
+        y_plus = y.copy()
+        y_minus = y.copy()
+        y_plus[i] += eps
+        y_minus[i] -= eps
+
+        chol_plus = transform.inverse(y_plus)
+        chol_minus = transform.inverse(y_minus)
+
+        # Compute derivative of each Cholesky element w.r.t. y[i]
+        d_chol = (chol_plus - chol_minus) / (2 * eps)
+        # Extract off-diagonal elements in same order as forward transform
+        dim = transform._dim
+        idx = 0
+        for row in range(1, dim):
+            for col in range(row):
+                if idx == i:
+                    # This is the diagonal element of the Jacobian
+                    log_det += float(np.log(np.abs(d_chol[row, col])))
+                idx += 1
+
+    return log_det
+
+
+def make_random_cholesky(dim: int, rng: np.random.Generator) -> np.ndarray:
+    """Generate a random valid Cholesky factor for a correlation matrix."""
+    # Generate random correlations via the onion method
+    chol = np.eye(dim)
+    for i in range(1, dim):
+        # Generate random partial correlations in (-1, 1)
+        remaining = 1.0
+        for j in range(i):
+            # Random value in valid range
+            max_val = np.sqrt(remaining) * 0.9  # Stay away from boundaries
+            chol[i, j] = rng.uniform(-max_val, max_val)
+            remaining -= chol[i, j] ** 2
+        chol[i, i] = np.sqrt(max(remaining, 1e-10))
+    return chol
+
+
+class TestCorrCholeskyTransform:
+    """Tests for CorrCholeskyTransform."""
+
+    @pytest.mark.parametrize("dim", [2, 3, 4, 5])
+    def test_forward_inverse_roundtrip(self, dim: int) -> None:
+        """Test inverse(forward(L)) == L for various dimensions."""
+        rng = np.random.default_rng(42)
+        t = CorrCholeskyTransform(dim=dim)
+        chol = make_random_cholesky(dim, rng)
+
+        y = t.forward(chol)
+        chol_recovered = t.inverse(y)
+        npt.assert_allclose(chol_recovered, chol, rtol=1e-6, atol=1e-10)
+
+    def test_forward_output_shape(self) -> None:
+        """Test forward returns correct shape (n_offdiag,)."""
+        for dim in [2, 3, 4, 5]:
+            t = CorrCholeskyTransform(dim=dim)
+            chol = np.eye(dim)  # Identity Cholesky
+            y = t.forward(chol)
+            expected_size = dim * (dim - 1) // 2
+            assert y.shape == (expected_size,), f"dim={dim}"
+
+    def test_inverse_output_shape(self) -> None:
+        """Test inverse returns correct shape (dim, dim)."""
+        for dim in [2, 3, 4, 5]:
+            t = CorrCholeskyTransform(dim=dim)
+            n_params = dim * (dim - 1) // 2
+            y = np.zeros(n_params)  # All zeros -> identity correlation
+            chol = t.inverse(y)
+            assert chol.shape == (dim, dim), f"dim={dim}"
+
+    def test_inverse_produces_lower_triangular(self) -> None:
+        """Test inverse output is lower triangular."""
+        rng = np.random.default_rng(123)
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            n_params = dim * (dim - 1) // 2
+            y = rng.standard_normal(n_params)
+            chol = t.inverse(y)
+
+            # Upper triangle (excluding diagonal) should be zero
+            for i in range(dim):
+                for j in range(i + 1, dim):
+                    assert chol[i, j] == 0.0, f"dim={dim}, i={i}, j={j}"
+
+    def test_inverse_produces_unit_row_norms(self) -> None:
+        """Test each row of inverse(y) has unit norm (correlation property)."""
+        rng = np.random.default_rng(456)
+        for dim in [2, 3, 4, 5]:
+            t = CorrCholeskyTransform(dim=dim)
+            n_params = dim * (dim - 1) // 2
+            y = rng.standard_normal(n_params)
+            chol = t.inverse(y)
+
+            for i in range(dim):
+                row_norm = np.linalg.norm(chol[i, : i + 1])
+                npt.assert_allclose(row_norm, 1.0, rtol=1e-6, atol=1e-10)
+
+    def test_inverse_produces_valid_correlation_matrix(self) -> None:
+        """Test L @ L.T is a valid correlation matrix."""
+        rng = np.random.default_rng(789)
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            n_params = dim * (dim - 1) // 2
+            y = rng.standard_normal(n_params)
+            chol = t.inverse(y)
+            corr = chol @ chol.T
+
+            # Diagonal should be 1
+            npt.assert_allclose(np.diag(corr), np.ones(dim), rtol=1e-6)
+
+            # Off-diagonal should be in (-1, 1)
+            for i in range(dim):
+                for j in range(i + 1, dim):
+                    assert -1 < corr[i, j] < 1, f"dim={dim}, corr[{i},{j}]={corr[i,j]}"
+
+            # Should be positive semi-definite
+            eigvals = np.linalg.eigvalsh(corr)
+            assert np.all(eigvals >= -1e-10), f"dim={dim}, eigvals={eigvals}"
+
+    def test_identity_correlation_forward(self) -> None:
+        """Test forward of identity Cholesky gives zeros."""
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            chol = np.eye(dim)
+            y = t.forward(chol)
+            npt.assert_allclose(y, np.zeros_like(y), atol=1e-10)
+
+    def test_identity_correlation_inverse(self) -> None:
+        """Test inverse of zeros gives identity Cholesky."""
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            n_params = dim * (dim - 1) // 2
+            y = np.zeros(n_params)
+            chol = t.inverse(y)
+            npt.assert_allclose(chol, np.eye(dim), atol=1e-10)
+
+    def test_extreme_positive_correlation_dim2(self) -> None:
+        """Test near +1 correlation for dim=2."""
+        t = CorrCholeskyTransform(dim=2)
+        # Cholesky for correlation 0.99: [[1, 0], [0.99, sqrt(1-0.99^2)]]
+        rho = 0.99
+        chol = np.array([[1.0, 0.0], [rho, np.sqrt(1 - rho**2)]])
+        y = t.forward(chol)
+        chol_recovered = t.inverse(y)
+        npt.assert_allclose(chol_recovered, chol, rtol=1e-4)
+
+    def test_extreme_negative_correlation_dim2(self) -> None:
+        """Test near -1 correlation for dim=2."""
+        t = CorrCholeskyTransform(dim=2)
+        # Cholesky for correlation -0.99
+        rho = -0.99
+        chol = np.array([[1.0, 0.0], [rho, np.sqrt(1 - rho**2)]])
+        y = t.forward(chol)
+        chol_recovered = t.inverse(y)
+        npt.assert_allclose(chol_recovered, chol, rtol=1e-4)
+
+    def test_log_det_jacobian_identity(self) -> None:
+        """Test Jacobian at identity Cholesky."""
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            chol = np.eye(dim)
+            jac = t.log_det_jacobian(chol)
+            # Should be finite
+            assert np.isfinite(jac), f"dim={dim}, jac={jac}"
+            # At identity, all z values are 0, so log(1-z^2) = 0
+            # and remaining = 1, so 0.5*log(remaining) = 0
+            npt.assert_allclose(float(jac), 0.0, atol=1e-10)
+
+    def test_log_det_jacobian_finite(self) -> None:
+        """Test Jacobian is finite for valid Cholesky factors."""
+        rng = np.random.default_rng(111)
+        for dim in [2, 3, 4]:
+            t = CorrCholeskyTransform(dim=dim)
+            chol = make_random_cholesky(dim, rng)
+            jac = t.log_det_jacobian(chol)
+            assert np.isfinite(jac), f"dim={dim}, jac={jac}"
+
+    @pytest.mark.parametrize("dim", [2, 3])
+    def test_jacobian_numerical(self, dim: int) -> None:
+        """Verify Jacobian via numerical differentiation."""
+        rng = np.random.default_rng(222 + dim)
+        t = CorrCholeskyTransform(dim=dim)
+        chol = make_random_cholesky(dim, rng)
+
+        analytical = float(t.log_det_jacobian(chol))
+        numerical = numerical_jacobian_cholesky(t, chol, eps=1e-5)
+
+        npt.assert_allclose(analytical, numerical, rtol=0.05, atol=0.1)
+
+    def test_dim2_specific_values(self) -> None:
+        """Test specific known values for dim=2."""
+        t = CorrCholeskyTransform(dim=2)
+
+        # For dim=2, Cholesky is [[1, 0], [rho, sqrt(1-rho^2)]]
+        # forward should give arctanh(rho)
+        for rho in [-0.5, 0.0, 0.3, 0.7]:
+            chol = np.array([[1.0, 0.0], [rho, np.sqrt(1 - rho**2)]])
+            y = t.forward(chol)
+            expected = np.arctanh(rho)
+            npt.assert_allclose(y[0], expected, rtol=1e-6)
+
+    def test_dim2_inverse_specific_values(self) -> None:
+        """Test inverse for specific values for dim=2."""
+        t = CorrCholeskyTransform(dim=2)
+
+        # inverse(arctanh(rho)) should give [[1, 0], [rho, sqrt(1-rho^2)]]
+        for rho in [-0.5, 0.0, 0.3, 0.7]:
+            y = np.array([np.arctanh(rho)])
+            chol = t.inverse(y)
+            expected = np.array([[1.0, 0.0], [rho, np.sqrt(1 - rho**2)]])
+            npt.assert_allclose(chol, expected, rtol=1e-6)
