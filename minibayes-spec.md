@@ -155,9 +155,14 @@ def sample(
     num_samples: int = 1000,
     num_warmup: int = 500,
     num_chains: int = 1,
+    parallel: bool = False,
     sampler: str = "adaptive_mh",
     sampler_kwargs: dict | None = None,
     seed: int | None = None,
+    progress: bool = False,
+    timeout: float | None = None,
+    max_samples: int | None = 100_000,
+    max_memory_mb: float | None = 1000.0,
 ) -> InferenceResult:
     """
     Run MCMC sampling.
@@ -176,12 +181,24 @@ def sample(
         Number of warmup/tuning samples (discarded)
     num_chains : int
         Number of independent chains
+    parallel : bool
+        If True and num_chains > 1, run chains in parallel using processes.
     sampler : str
         One of: "mh", "adaptive_mh", "ensemble"
     sampler_kwargs : dict, optional
         Additional arguments passed to sampler
     seed : int, optional
         Random seed for reproducibility
+    progress : bool
+        If True, display progress bars for warmup and sampling phases.
+    timeout : float, optional
+        Maximum time in seconds for sampling. Raises SamplingTimeoutError if exceeded.
+    max_samples : int, optional
+        Maximum allowed num_samples. Raises ValueError if exceeded.
+        Default: 100,000. Set to None to disable.
+    max_memory_mb : float, optional
+        Maximum estimated memory usage in MB. Raises MemoryError if exceeded.
+        Default: 1000 MB. Set to None to disable.
 
     Returns
     -------

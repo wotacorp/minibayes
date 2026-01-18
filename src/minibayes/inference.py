@@ -24,6 +24,36 @@ _SAMPLERS: dict[str, type[Sampler]] = {
     "ensemble": EnsembleSampler,
 }
 
+# Default memory warning threshold in MB
+_DEFAULT_MEMORY_WARNING_MB: float = 1000.0
+
+# Default maximum samples limit
+_DEFAULT_MAX_SAMPLES: int = 100_000
+
+
+def _estimate_memory_mb(num_params: int, num_samples: int, num_chains: int) -> float:
+    """
+    Estimate memory usage in MB for sampling results.
+
+    Parameters
+    ----------
+    num_params : int
+        Number of flat (scalar) parameters.
+    num_samples : int
+        Number of samples per chain.
+    num_chains : int
+        Number of chains.
+
+    Returns
+    -------
+    float
+        Estimated memory usage in megabytes.
+    """
+    # Each scalar param stores: (num_chains, num_samples) float64 array
+    # We store both constrained and unconstrained versions (2x)
+    bytes_per_param: int = num_chains * num_samples * 8 * 2
+    return (num_params * bytes_per_param) / (1024 * 1024)
+
 
 def _get_initial_state(
     model: Model,
@@ -70,7 +100,7 @@ def _run_sampler(
     progress_prefix: str,
     timeout: float | None,
     start_time: float,
-) -> tuple[dict[str, list[list[float]]], float]:
+) -> tuple[dict[str, NDArray[np.float64]], float]:
     """
     Run sampler using stateful interface.
 
@@ -78,8 +108,8 @@ def _run_sampler(
 
     Returns
     -------
-    tuple[dict[str, list[list[float]]], float]
-        Samples with shape [num_chains][num_samples] per param, and avg acceptance rate.
+    tuple[dict[str, NDArray[np.float64]], float]
+        Samples with shape (num_chains, num_samples) per param, and avg acceptance rate.
     """
     check_interval: int = 100
 
@@ -102,10 +132,11 @@ def _run_sampler(
     # Post-warmup finalization
     sampler.post_warmup()
 
-    # Sampling phase
+    # Sampling phase - pre-allocate arrays for memory efficiency
     num_chains: int = sampler.num_chains
-    samples: dict[str, list[list[float]]] = {
-        name: [[] for _ in range(num_chains)] for name in flat_param_names
+    samples: dict[str, NDArray[np.float64]] = {
+        name: np.empty((num_chains, num_samples), dtype=np.float64)
+        for name in flat_param_names
     }
     total_accept_rate: float = 0.0
 
@@ -116,7 +147,7 @@ def _run_sampler(
             states: list[dict[str, float]] = sampler.get_states()
             for k, state in enumerate(states):
                 for name in flat_param_names:
-                    samples[name][k].append(state[name])
+                    samples[name][k, step_num] = state[name]
             pbar.update()
             if step_num % check_interval == 0:
                 check_timeout()
@@ -141,7 +172,7 @@ def _run_chain_worker(
         float | None,
         float,
     ],
-) -> tuple[dict[str, list[float]], float]:
+) -> tuple[dict[str, NDArray[np.float64]], float]:
     """
     Worker function for parallel chain execution.
 
@@ -190,9 +221,9 @@ def _run_chain_worker(
         start_time=start_time,
     )
 
-    # Flatten from [1][num_samples] to [num_samples]
-    flat_samples: dict[str, list[float]] = {
-        name: chain_samples[name][0] for name in flat_param_names
+    # Extract single chain from (1, num_samples) to (num_samples,)
+    flat_samples: dict[str, NDArray[np.float64]] = {
+        name: chain_samples[name][0, :] for name in flat_param_names
     }
     return flat_samples, accept_rate
 
@@ -210,6 +241,8 @@ def sample(
     seed: int | None = None,
     progress: bool = False,
     timeout: float | None = None,
+    max_samples: int | None = _DEFAULT_MAX_SAMPLES,
+    max_memory_mb: float | None = _DEFAULT_MEMORY_WARNING_MB,
 ) -> InferenceResult:
     """
     Run MCMC sampling.
@@ -247,6 +280,12 @@ def sample(
     timeout : float, optional
         Maximum time in seconds for sampling. If exceeded, raises
         SamplingTimeoutError. Default: None (no timeout).
+    max_samples : int, optional
+        Maximum allowed num_samples. Raises ValueError if exceeded.
+        Default: 100,000. Set to None to disable this safety limit.
+    max_memory_mb : float, optional
+        Maximum estimated memory usage in MB. Raises MemoryError if exceeded.
+        Default: 1000 MB. Set to None to disable this safety limit.
 
     Returns
     -------
@@ -256,12 +295,33 @@ def sample(
 
     Raises
     ------
+    ValueError
+        If num_samples exceeds max_samples.
+    MemoryError
+        If estimated memory usage exceeds max_memory_mb.
     SamplingTimeoutError
         If timeout is specified and exceeded.
     ModelSpecError
         If sampler name is invalid.
     """
     start_time: float = time.perf_counter()
+
+    # Validate max_samples limit
+    if max_samples is not None and num_samples > max_samples:
+        raise ValueError(
+            f"num_samples ({num_samples}) exceeds max_samples ({max_samples}). "
+            f"Set max_samples=None to disable this limit."
+        )
+
+    # Validate memory usage limit
+    num_flat_params: int = len(model.flat_param_names)
+    estimated_mb: float = _estimate_memory_mb(num_flat_params, num_samples, num_chains)
+    if max_memory_mb is not None and estimated_mb > max_memory_mb:
+        raise MemoryError(
+            f"Estimated memory usage ({estimated_mb:.0f} MB) exceeds "
+            f"max_memory_mb ({max_memory_mb:.0f} MB). "
+            f"Reduce num_samples/num_chains, or set max_memory_mb=None to disable."
+        )
 
     # Validate sampler name
     if sampler not in _SAMPLERS:
@@ -307,7 +367,9 @@ def sample(
     else:
         # Single-chain samplers: run each chain independently
         if num_chains > 1:
-            all_samples_flat: dict[str, list[list[float]]] = {name: [] for name in flat_param_names}
+            all_samples_flat: dict[str, list[NDArray[np.float64]]] = {
+                name: [] for name in flat_param_names
+            }
             acceptance_rates: list[float] = []
             child_rngs: list[np.random.Generator] = list(rng.spawn(num_chains))
 
@@ -358,7 +420,7 @@ def sample(
                     chain_sampler: Sampler = _SAMPLERS[sampler](**kwargs)
                     chain_sampler.initialize([chain_initial], log_prob_fn)
 
-                    chain_result: tuple[dict[str, list[list[float]]], float] = _run_sampler(
+                    chain_result: tuple[dict[str, NDArray[np.float64]], float] = _run_sampler(
                         chain_sampler,
                         log_prob_fn,
                         num_warmup,
@@ -370,11 +432,12 @@ def sample(
                         timeout,
                         start_time,
                     )
-                    chain_samples_nested: dict[str, list[list[float]]] = chain_result[0]
+                    chain_samples_arr: dict[str, NDArray[np.float64]] = chain_result[0]
                     chain_accept_rate: float = chain_result[1]
 
                     for name in flat_param_names:
-                        all_samples_flat[name].append(chain_samples_nested[name][0])
+                        # Extract single chain from (1, num_samples) to (num_samples,)
+                        all_samples_flat[name].append(chain_samples_arr[name][0, :])
                     acceptance_rates.append(chain_accept_rate)
 
             # Return early since we already ran all chains
@@ -402,7 +465,7 @@ def sample(
         progress_prefix = ""
 
     # Run sampler (unified path for ensemble and single chain with num_chains=1)
-    all_samples_flat, avg_acceptance = _run_sampler(
+    sampler_samples, avg_acceptance = _run_sampler(
         sampler_instance,
         log_prob_fn,
         num_warmup,
@@ -416,15 +479,15 @@ def sample(
     )
 
     # Build acceptance rates array
-    acceptance_rates = [avg_acceptance] * num_chains
+    acceptance_rates_arr: list[float] = [avg_acceptance] * num_chains
 
     elapsed_time = time.perf_counter() - start_time
     if progress:
         sys.stderr.write(f"Sampling complete in {elapsed_time:.2f}s\n")
 
     return _build_result(
-        all_samples_flat,
-        acceptance_rates,
+        sampler_samples,
+        acceptance_rates_arr,
         model,
         structured_param_names,
         flat_param_names,
@@ -438,7 +501,7 @@ def sample(
 
 
 def _build_result(
-    all_samples_flat: dict[str, list[list[float]]],
+    all_samples_flat: dict[str, list[NDArray[np.float64]]] | dict[str, NDArray[np.float64]],
     acceptance_rates: list[float],
     model: Model,
     structured_param_names: list[str],
@@ -454,7 +517,13 @@ def _build_result(
     # Convert flat samples to arrays
     flat_samples_unc: dict[str, NDArray[np.float64]] = {}
     for name in flat_param_names:
-        arr: NDArray[np.float64] = np.array(all_samples_flat[name], dtype=np.float64)
+        sample_data: list[NDArray[np.float64]] | NDArray[np.float64] = all_samples_flat[name]
+        if isinstance(sample_data, list):
+            # List of arrays (from multi-chain path) - stack into 2D
+            arr: NDArray[np.float64] = np.stack(sample_data, axis=0)
+        else:
+            # Already an array (from single-chain/ensemble path)
+            arr = sample_data
         flat_samples_unc[name] = arr  # shape: (num_chains, num_samples)
 
     # Reconstruct structured samples

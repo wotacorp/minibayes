@@ -16,6 +16,7 @@ pip install minibayes
 - **Diagnostics**: Effective Sample Size (ESS), Gelman-Rubin R-hat
 - **Model Comparison**: WAIC for comparing models
 - **Export**: Save/load results in NPZ or JSON format
+- **Memory Safety**: Configurable limits on samples and memory usage to prevent OOM errors
 
 ## Development Setup
 
