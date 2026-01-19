@@ -15,6 +15,7 @@ from minibayes.distributions.multivariate_normal import MultivariateNormal
 from minibayes.distributions.normal import Normal
 from minibayes.distributions.poisson import Poisson
 from minibayes.distributions.student_t import StudentT
+from minibayes.distributions.truncated_normal import TruncatedNormal
 from minibayes.distributions.uniform import Uniform
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "Beta",
     # Continuous - BOUNDED support
     "Uniform",
+    "TruncatedNormal",
     # Discrete
     "Bernoulli",
     "Poisson",

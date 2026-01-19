@@ -6,6 +6,7 @@ from minibayes.transforms.corr_cholesky import CorrCholeskyTransform
 from minibayes.transforms.identity import IdentityTransform
 from minibayes.transforms.log import LogTransform
 from minibayes.transforms.logit import LogitTransform
+from minibayes.transforms.shifted_log import ShiftedLogTransform
 
 __all__ = [
     "Transform",
@@ -14,4 +15,5 @@ __all__ = [
     "LogitTransform",
     "AffineTransform",
     "CorrCholeskyTransform",
+    "ShiftedLogTransform",
 ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -49,9 +50,16 @@ def extract_samples(
     if params is not None:
         samples = {k: v for k, v in samples.items() if k in params}
 
-    # Ensure all are 2D (chains, samples)
+    # Ensure all are 2D (chains, samples), skip higher dimensions with warning
     result: dict[str, NDArray[np.float64]] = {}
     for name, arr in samples.items():
+        if arr.ndim > 2:
+            warnings.warn(
+                f"Skipping '{name}': {arr.ndim}D arrays not supported in plots "
+                "(use add_derived() to extract scalars)",
+                stacklevel=3,
+            )
+            continue
         result[name] = ensure_2d(arr)
 
     return result
