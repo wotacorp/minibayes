@@ -35,16 +35,9 @@ class EnsembleSampler(Sampler):
             raise ModelSpecError("stretch_scale must be > 1.0")
 
         self._a: float = stretch_scale
-        # Ensemble uses NDArray for efficiency (overrides base class list type)
-        self._log_probs: NDArray[np.float64] | None = None  # type: ignore[assignment]
-        self._positions: NDArray[np.float64] | None = None  # Cached walker positions
-        self._param_names: list[str] | None = None
+        self._ensemble_log_probs: NDArray[np.float64] | None = None
         self._accept_count: int = 0
         self._step_count: int = 0
-
-    # -------------------------------------------------------------------------
-    # Stateful interface (overrides base class)
-    # -------------------------------------------------------------------------
 
     def initialize(
         self,
@@ -65,9 +58,9 @@ class EnsembleSampler(Sampler):
         if num_walkers < 2 or num_walkers % 2 != 0:
             raise ModelSpecError("num_walkers must be even and >= 2")
 
-        # Call parent to store states
-        super().initialize(initial_states, log_prob_fn)
-
+        # Store states
+        self._states = [s.copy() for s in initial_states]
+        self._log_prob_fn = log_prob_fn
         self._param_names = list(initial_states[0].keys())
 
         # Build cached positions array for efficient access
@@ -76,11 +69,11 @@ class EnsembleSampler(Sampler):
         ]
         self._positions = np.array(positions_list, dtype=np.float64)
 
-        # Compute initial log probabilities
-        self._log_probs = np.zeros(num_walkers, dtype=np.float64)
+        # Compute initial log probabilities (use NDArray for efficiency)
+        self._ensemble_log_probs = np.zeros(num_walkers, dtype=np.float64)
         for k, state in enumerate(initial_states):
             lp: float = log_prob_fn(state)
-            self._log_probs[k] = lp if np.isfinite(lp) else float("-inf")
+            self._ensemble_log_probs[k] = lp if np.isfinite(lp) else float("-inf")
 
         # Reset acceptance tracking
         self._accept_count = 0
@@ -115,8 +108,10 @@ class EnsembleSampler(Sampler):
         float
             Acceptance rate for this iteration.
         """
-        if not self._states or self._log_probs is None:
-            raise RuntimeError("EnsembleSampler not initialized. Call initialize() first.")
+        if not self._states or self._ensemble_log_probs is None:
+            raise RuntimeError(
+                "EnsembleSampler not initialized. Call initialize() first."
+            )
 
         num_walkers: int = len(self._states)
         half: int = num_walkers // 2
@@ -141,7 +136,11 @@ class EnsembleSampler(Sampler):
         rng: np.random.Generator,
     ) -> int:
         """Update walkers in [active_start:active_end] using complement."""
-        if self._param_names is None or self._log_probs is None or self._positions is None:
+        if (
+            self._param_names is None
+            or self._ensemble_log_probs is None
+            or self._positions is None
+        ):
             raise RuntimeError("Sampler not initialized")
 
         n_active: int = active_end - active_start
@@ -151,7 +150,7 @@ class EnsembleSampler(Sampler):
         # Use cached positions array (no list conversion needed)
         active: NDArray[np.float64] = self._positions[active_start:active_end]
         complement: NDArray[np.float64] = self._positions[comp_start:comp_end]
-        active_lp: NDArray[np.float64] = self._log_probs[active_start:active_end]
+        active_lp: NDArray[np.float64] = self._ensemble_log_probs[active_start:active_end]
 
         # Sample z values: z = ((a-1)*U + 1)^2 / a
         u: NDArray[np.float64] = rng.uniform(size=n_active)
@@ -188,7 +187,7 @@ class EnsembleSampler(Sampler):
             if log_u < log_alpha:
                 self._states[active_start + i] = prop_dict
                 self._positions[active_start + i, :] = proposals[i, :]
-                self._log_probs[active_start + i] = prop_lp
+                self._ensemble_log_probs[active_start + i] = prop_lp
                 accepts += 1
 
         return accepts
@@ -199,35 +198,3 @@ class EnsembleSampler(Sampler):
         if self._step_count == 0:
             return 0.0
         return self._accept_count / self._step_count
-
-    # -------------------------------------------------------------------------
-    # Stateless interface (for backwards compatibility)
-    # -------------------------------------------------------------------------
-
-    def step(
-        self,
-        current: dict[str, float],
-        log_prob_fn: Callable[[dict[str, float]], float],
-        rng: np.random.Generator,
-    ) -> tuple[dict[str, float], bool]:
-        """
-        Take one step (stateless interface).
-
-        For ensemble sampler, this advances all walkers and returns
-        the first walker's state.
-        """
-        if not self._states:
-            raise RuntimeError("EnsembleSampler not initialized. Call initialize() first.")
-
-        self.advance(log_prob_fn, rng)
-        return self._states[0].copy(), True
-
-    def warmup_step(
-        self,
-        current: dict[str, float],
-        log_prob_fn: Callable[[dict[str, float]], float],
-        rng: np.random.Generator,
-        step_num: int,
-    ) -> tuple[dict[str, float], bool]:
-        """Same as step (ensemble sampler doesn't adapt during warmup)."""
-        return self.step(current, log_prob_fn, rng)

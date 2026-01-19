@@ -14,6 +14,7 @@ from minibayes.params import ParamInfo
 from minibayes.results import InferenceResult
 from minibayes.samplers import AdaptiveMetropolis, EnsembleSampler, MetropolisHastings
 from minibayes.samplers.base import Sampler
+from minibayes.transforms import CorrCholeskyTransform
 from minibayes.utils import ensure_rng
 from minibayes.utils.progress import ProgressBar
 
@@ -549,17 +550,27 @@ def _build_result(
                 unc_list.append(flat_samples_unc[flat_name])
             unc_arr: NDArray[np.float64] = np.stack(unc_list, axis=-1)
             samples_unconstrained[name] = unc_arr
+
             # Transform to constrained
-            constrained_samples: list[NDArray[np.float64]] = []
-            for chain_idx in range(num_chains):
-                chain_constrained: list[NDArray[np.float64]] = []
-                for sample_idx in range(num_samples):
-                    unc_sample = unc_arr[chain_idx, sample_idx, :]
-                    const_sample: NDArray[np.float64] = transform.inverse(unc_sample)
-                    chain_constrained.append(const_sample)
-                chain_arr: NDArray[np.float64] = np.array(chain_constrained, dtype=np.float64)
-                constrained_samples.append(chain_arr)
-            samples_constrained[name] = np.array(constrained_samples, dtype=np.float64)
+            if isinstance(transform, CorrCholeskyTransform):
+                # Matrix param: transform changes shape, must loop
+                constrained_samples: list[NDArray[np.float64]] = []
+                for chain_idx in range(num_chains):
+                    chain_constrained: list[NDArray[np.float64]] = []
+                    for sample_idx in range(num_samples):
+                        unc_sample = unc_arr[chain_idx, sample_idx, :]
+                        const_sample: NDArray[np.float64] = transform.inverse(unc_sample)
+                        chain_constrained.append(const_sample)
+                    chain_arr: NDArray[np.float64] = np.array(
+                        chain_constrained, dtype=np.float64
+                    )
+                    constrained_samples.append(chain_arr)
+                samples_constrained[name] = np.array(
+                    constrained_samples, dtype=np.float64
+                )
+            else:
+                # Vector param: shape-preserving transform, vectorize
+                samples_constrained[name] = transform.inverse(unc_arr)
         else:
             # Scalar param: shape (chains, samples)
             unc_arr = flat_samples_unc[name]

@@ -10,33 +10,37 @@ from minibayes.samplers import AdaptiveMetropolis, EnsembleSampler, MetropolisHa
 class TestMetropolisHastings:
     """Tests for MetropolisHastings sampler."""
 
-    def test_step_returns_dict_and_bool(self, rng: np.random.Generator) -> None:
-        """Test step returns (params, accepted)."""
+    def test_advance_returns_acceptance_rate(self, rng: np.random.Generator) -> None:
+        """Test advance returns acceptance rate."""
         sampler = MetropolisHastings(proposal_scale=1.0)
-        current: dict[str, float] = {"mu": 0.0}
+        initial: dict[str, float] = {"mu": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * p["mu"] ** 2  # Standard normal
 
-        new_state, accepted = sampler.step(current, log_prob, rng)
-        assert isinstance(new_state, dict)
-        assert isinstance(accepted, bool)
-        assert "mu" in new_state
+        sampler.initialize([initial], log_prob)
+        accept_rate: float = sampler.advance(log_prob, rng)
+        assert 0.0 <= accept_rate <= 1.0
+
+        states = sampler.get_states()
+        assert len(states) == 1
+        assert "mu" in states[0]
 
     def test_accepts_higher_probability(self, rng: np.random.Generator) -> None:
         """Test proposals with higher log_prob are accepted."""
         sampler = MetropolisHastings(proposal_scale=0.001)  # tiny steps
-        current: dict[str, float] = {"x": 10.0}
+        initial: dict[str, float] = {"x": 10.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -(p["x"] ** 2)  # max at 0
 
+        sampler.initialize([initial], log_prob)
+
         # Run many steps; should accept most moves toward 0
         accepts = 0
-        state = current.copy()
         for _ in range(100):
-            state, acc = sampler.step(state, log_prob, rng)
-            if acc:
+            accept_rate = sampler.advance(log_prob, rng)
+            if accept_rate > 0:
                 accepts += 1
         assert accepts > 50  # should accept most proposals
 
@@ -56,17 +60,17 @@ class TestMetropolisHastings:
             return log_prior + log_lik
 
         sampler = MetropolisHastings(proposal_scale=0.5)
-        samples: list[float] = []
-        state: dict[str, float] = {"mu": 0.0}
+        sampler.initialize([{"mu": 0.0}], log_prob)
 
         # Warmup
-        for _ in range(500):
-            state, _ = sampler.step(state, log_prob, rng)
+        for step in range(500):
+            sampler.advance(log_prob, rng, warmup=True, step_num=step)
 
         # Sample
+        samples: list[float] = []
         for _ in range(2000):
-            state, _ = sampler.step(state, log_prob, rng)
-            samples.append(state["mu"])
+            sampler.advance(log_prob, rng)
+            samples.append(sampler.get_states()[0]["mu"])
 
         empirical_mean: float = float(np.mean(samples))
         assert abs(empirical_mean - posterior_mean) < 0.1
@@ -74,14 +78,17 @@ class TestMetropolisHastings:
     def test_per_parameter_scales(self, rng: np.random.Generator) -> None:
         """Test per-parameter proposal scales."""
         sampler = MetropolisHastings(proposal_scale={"a": 0.1, "b": 2.0})
-        current: dict[str, float] = {"a": 0.0, "b": 0.0}
+        initial: dict[str, float] = {"a": 0.0, "b": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * (p["a"] ** 2 + p["b"] ** 2)
 
-        new_state, _ = sampler.step(current, log_prob, rng)
-        assert "a" in new_state
-        assert "b" in new_state
+        sampler.initialize([initial], log_prob)
+        sampler.advance(log_prob, rng)
+
+        states = sampler.get_states()
+        assert "a" in states[0]
+        assert "b" in states[0]
 
     def test_invalid_scale_raises(self) -> None:
         """Test that invalid proposal_scale raises ModelSpecError."""
@@ -94,47 +101,39 @@ class TestMetropolisHastings:
         with pytest.raises(ModelSpecError):
             MetropolisHastings(proposal_scale={"x": -0.5})
 
-    def test_warmup_step_same_as_step(self, rng: np.random.Generator) -> None:
-        """Test warmup_step delegates to step for basic MH."""
-        sampler = MetropolisHastings(proposal_scale=1.0)
-        current: dict[str, float] = {"mu": 0.0}
-
-        def log_prob(p: dict[str, float]) -> float:
-            return -0.5 * p["mu"] ** 2
-
-        # warmup_step should work the same as step
-        new_state, accepted = sampler.warmup_step(current, log_prob, rng, step_num=0)
-        assert isinstance(new_state, dict)
-        assert isinstance(accepted, bool)
-
 
 class TestAdaptiveMetropolis:
     """Tests for AdaptiveMetropolis sampler."""
 
-    def test_step_returns_dict_and_bool(self, rng: np.random.Generator) -> None:
-        """Test step returns (params, accepted)."""
+    def test_advance_returns_acceptance_rate(self, rng: np.random.Generator) -> None:
+        """Test advance returns acceptance rate."""
         sampler = AdaptiveMetropolis(initial_scale=1.0)
-        current: dict[str, float] = {"mu": 0.0}
+        initial: dict[str, float] = {"mu": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * p["mu"] ** 2
 
-        new_state, accepted = sampler.step(current, log_prob, rng)
-        assert isinstance(new_state, dict)
-        assert isinstance(accepted, bool)
-        assert "mu" in new_state
+        sampler.initialize([initial], log_prob)
+        accept_rate: float = sampler.advance(log_prob, rng)
+        assert 0.0 <= accept_rate <= 1.0
+
+        states = sampler.get_states()
+        assert len(states) == 1
+        assert "mu" in states[0]
 
     def test_warmup_adapts_covariance(self, rng: np.random.Generator) -> None:
-        """Test warmup_step adapts proposal covariance."""
+        """Test warmup adapts proposal covariance."""
         sampler = AdaptiveMetropolis(initial_scale=1.0)
-        state: dict[str, float] = {"x": 0.0, "y": 0.0}
+        initial: dict[str, float] = {"x": 0.0, "y": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * (p["x"] ** 2 + p["y"] ** 2)
 
-        # Run warmup (need at least 50 steps for adaptation to kick in)
+        sampler.initialize([initial], log_prob)
+
+        # Run warmup (need at least 100 steps for adaptation to kick in)
         for i in range(200):
-            state, _ = sampler.warmup_step(state, log_prob, rng, step_num=i)
+            sampler.advance(log_prob, rng, warmup=True, step_num=i)
 
         # Covariance should be set after warmup
         assert sampler._cov is not None
@@ -154,18 +153,18 @@ class TestAdaptiveMetropolis:
             return log_prior + log_lik
 
         sampler = AdaptiveMetropolis(initial_scale=1.0)
-        state: dict[str, float] = {"mu": 0.0}
+        sampler.initialize([{"mu": 0.0}], log_prob)
 
         # Warmup
         for i in range(500):
-            state, _ = sampler.warmup_step(state, log_prob, rng, step_num=i)
+            sampler.advance(log_prob, rng, warmup=True, step_num=i)
         sampler.freeze()
 
         # Sample
         samples: list[float] = []
         for _ in range(2000):
-            state, _ = sampler.step(state, log_prob, rng)
-            samples.append(state["mu"])
+            sampler.advance(log_prob, rng)
+            samples.append(sampler.get_states()[0]["mu"])
 
         empirical_mean: float = float(np.mean(samples))
         assert abs(empirical_mean - posterior_mean) < 0.15
@@ -173,21 +172,23 @@ class TestAdaptiveMetropolis:
     def test_acceptance_rate_near_target(self, rng: np.random.Generator) -> None:
         """Test acceptance rate is reasonable after warmup."""
         sampler = AdaptiveMetropolis(initial_scale=0.1)
-        state: dict[str, float] = {"x": 0.0, "y": 0.0}
+        initial: dict[str, float] = {"x": 0.0, "y": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * (p["x"] ** 2 + p["y"] ** 2)
 
+        sampler.initialize([initial], log_prob)
+
         # Long warmup to allow adaptation
         for i in range(1000):
-            state, _ = sampler.warmup_step(state, log_prob, rng, step_num=i)
+            sampler.advance(log_prob, rng, warmup=True, step_num=i)
         sampler.freeze()
 
         # Check acceptance rate during sampling
         accepts = 0
         for _ in range(1000):
-            state, accepted = sampler.step(state, log_prob, rng)
-            accepts += int(accepted)
+            accept_rate = sampler.advance(log_prob, rng)
+            accepts += int(accept_rate > 0)
 
         acceptance_rate = accepts / 1000
         # Should be in reasonable range (10-60%)
@@ -196,14 +197,16 @@ class TestAdaptiveMetropolis:
     def test_freeze_clears_history(self, rng: np.random.Generator) -> None:
         """Test freeze() clears sample history."""
         sampler = AdaptiveMetropolis(initial_scale=1.0)
-        state: dict[str, float] = {"x": 0.0}
+        initial: dict[str, float] = {"x": 0.0}
 
         def log_prob(p: dict[str, float]) -> float:
             return -0.5 * p["x"] ** 2
 
+        sampler.initialize([initial], log_prob)
+
         # Run some warmup steps
         for i in range(100):
-            state, _ = sampler.warmup_step(state, log_prob, rng, step_num=i)
+            sampler.advance(log_prob, rng, warmup=True, step_num=i)
 
         assert len(sampler._sample_history) > 0
 
