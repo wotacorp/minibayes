@@ -32,16 +32,7 @@ dev = [
     "scipy>=1.11.0",
 ]
 viz = ["matplotlib>=3.7.0"]
-notebooks = [
-    "matplotlib>=3.7.0",
-    "seaborn>=0.12.0",
-    "jupyter>=1.0.0",
-    "pymc>=5.10.0",
-    "arviz>=0.17.0",
-    "plotly",
-    "jax",
-    "numpyro",
-]
+notebooks = ["matplotlib>=3.7.0", "seaborn>=0.12.0", "jupyter>=1.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/theoradusz/minibayes"
