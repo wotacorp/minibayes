@@ -31,13 +31,16 @@ dev = [
     "isort>=5.13.0",
     "scipy>=1.11.0",
 ]
-viz = [
-    "matplotlib>=3.7.0",
-]
+viz = ["matplotlib>=3.7.0"]
 notebooks = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "jupyter>=1.0.0",
+    "pymc>=5.10.0",
+    "arviz>=0.17.0",
+    "plotly",
+    "jax",
+    "numpyro",
 ]
 
 [project.urls]
@@ -104,8 +107,8 @@ select = [
     "NPY", # numpy-specific rules
 ]
 ignore = [
-    "E501",   # line too long (handled by formatter)
-    "TC002",  # numpy.typing imports - negligible overhead for numpy-based library
+    "E501",  # line too long (handled by formatter)
+    "TC002", # numpy.typing imports - negligible overhead for numpy-based library
 ]
 
 [tool.ruff.lint.isort]

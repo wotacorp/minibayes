@@ -246,6 +246,12 @@ def summary(
                 _warn_if_non_converged(elem_name, result[elem_name])
 
         else:
-            raise ValueError(f"Unsupported array dimension {arr.ndim} for {name}")
+            # Skip 4D+ arrays (e.g., matrix parameters like LKJCholesky)
+            warnings.warn(
+                f"Skipping '{name}': {arr.ndim}D arrays not supported in summary "
+                "(use add_derived() to extract scalars)",
+                stacklevel=2,
+            )
+            continue
 
     return result

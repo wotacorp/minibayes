@@ -190,17 +190,13 @@ def plot_samples(
         for chain_idx in range(n_chains):
             chain_data: NDArray[np.float64] = arr[chain_idx, :]
             color = CHAIN_COLORS[chain_idx % len(CHAIN_COLORS)]
-            label = f"Chain {chain_idx + 1}" if n_chains > 1 else None
-
-            ax_i.plot(chain_data, alpha=0.7, linewidth=0.5, color=color, label=label)
+            ax_i.plot(chain_data, alpha=0.7, linewidth=0.5, color=color)
 
         ax_i.set_xlabel("Iteration", fontsize=10, color="#4A4A4A")
         ax_i.set_ylabel(name, fontsize=10, color="#4A4A4A")
         ax_i.set_title(f"Samples: {name}", fontsize=11, color="#4A4A4A")
-        if n_chains > 1:
-            ax_i.legend(fontsize=8, loc="upper right", frameon=False)
 
-    plt.tight_layout()
+    plt.tight_layout(h_pad=2.0)
     return fig_out
 
 
