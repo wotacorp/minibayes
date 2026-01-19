@@ -34,6 +34,8 @@ This correction ensures samples in transformed space correspond to the correct d
 | **Log** | (0, ∞) | φ = log(θ) | θ = exp(φ) | log(θ) |
 | **Logit** | (0, 1) | φ = log(θ/(1-θ)) | θ = 1/(1+e⁻ᵠ) | log(θ) + log(1-θ) |
 | **Affine** | (a, b) | φ = logit((θ-a)/(b-a)) | θ = a + (b-a)·σ(φ) | log(θ-a) + log(b-θ) - log(b-a) |
+| **ShiftedLog** | (a, ∞) | φ = log(θ-a) | θ = exp(φ) + a | log(θ-a) |
+| **CorrCholesky** | Cholesky(d) | φ = arctanh(normalized off-diag) | θ = Cholesky factor | See implementation |
 
 Where σ(φ) = 1/(1+e⁻ᵠ) is the sigmoid function.
 
@@ -57,6 +59,22 @@ For θ ∈ (a, b), we scale to (0,1) then apply logit:
 - Inverse: z = sigmoid(φ), θ = a + (b-a)z
 - Jacobian: dθ/dφ = (b-a) · z(1-z)
 - Log Jacobian: log(θ-a) + log(b-θ) - log(b-a)
+
+### ShiftedLog Transform
+For θ ∈ (a, +∞), we use φ = log(θ-a):
+- Inverse: θ = exp(φ) + a
+- Jacobian: dθ/dφ = exp(φ) = θ - a
+- Log Jacobian: log(θ-a) = φ
+
+Useful for lower-bounded parameters (e.g., TruncatedNormal with only a lower bound).
+
+### CorrCholesky Transform
+For correlation matrix Cholesky factors L (d×d lower triangular where L·Lᵀ is a correlation matrix):
+- Maps d(d-1)/2 off-diagonal elements to unconstrained space via arctanh
+- Each off-diagonal is normalized by the remaining variance before transformation
+- Diagonal elements are determined by the unit row norm constraint
+
+This transform is used automatically for LKJCholesky distributions.
 
 ## Usage in minibayes
 

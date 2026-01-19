@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           FOUNDATION (Week 1)                           │
+│                              FOUNDATION                                 │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   utils.py ──────────┬──────────────► transforms.py                     │
@@ -22,7 +22,7 @@
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           CORE (Week 2)                                 │
+│                                 CORE                                    │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   model.py ◄──────── distributions + transforms                         │
@@ -39,7 +39,7 @@
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           INTERFACE (Week 3)                            │
+│                              INTERFACE                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   __init__.py ◄────── model + samplers + results                        │
@@ -330,19 +330,6 @@ def sample(
 | samplers/adaptive | Integration | Correlated posterior recovery |
 | diagnostics | Unit | ESS < n for correlated, R-hat formulas |
 | mb.sample | End-to-end | Model-based sampling, reproducibility, multi-chain |
-
----
-
-## Timeline
-
-| Week | Blocks | Deliverable |
-|------|--------|-------------|
-| 1 | 1-4 | Distributions + transforms work |
-| 2 | 5-8 | Model + MH + Adaptive MH sample |
-| 3 | 9-12 | Full API, diagnostics, export |
-| 4 | Testing | Comprehensive tests, edge cases |
-
-**Total: ~800 lines of code** (excluding tests)
 
 ---
 

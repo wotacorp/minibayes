@@ -47,6 +47,7 @@ Each distribution provides two key operations:
 | Distribution | Support | Parameters | Use Case |
 |--------------|---------|------------|----------|
 | **Uniform** | [low, high] | low, high | Bounded parameters, non-informative |
+| **TruncatedNormal** | [lower, upper] | mu, sigma, lower, upper | Bounded normal, lower-bounded positive params |
 
 ### Discrete
 
@@ -72,6 +73,7 @@ Each distribution provides two key operations:
 | **InverseGamma(α, β)** | α·log(β) - log(Γ(α)) - (α+1)·log(x) - β/x for x > 0 |
 | **Beta(α, β)** | (α-1)·log(x) + (β-1)·log(1-x) - log(B(α,β)) for x ∈ (0,1) |
 | **Uniform(a, b)** | -log(b-a) for x ∈ [a,b] |
+| **TruncatedNormal(μ, σ, a, b)** | Normal log-prob - log(Φ((b-μ)/σ) - Φ((a-μ)/σ)) for x ∈ [a,b] |
 | **MultivariateNormal(μ, Σ)** | -½(d·log(2π) + log\|Σ\| + (x-μ)ᵀΣ⁻¹(x-μ)) |
 | **LKJCholesky(d, η)** | Σₖ₌₂ᵈ (d - k + 2η - 2)·log(L[k,k]) |
 
@@ -93,7 +95,7 @@ Distributions are automatically paired with transforms based on their support:
 | REAL | (-∞, +∞) | IdentityTransform | Normal, StudentT, Cauchy, Laplace |
 | POSITIVE | (0, +∞) | LogTransform | HalfNormal, Exponential, Gamma, LogNormal, InverseGamma |
 | UNIT | (0, 1) | LogitTransform | Beta |
-| BOUNDED | (a, b) | AffineTransform | Uniform |
+| BOUNDED | (a, b) | AffineTransform | Uniform, TruncatedNormal |
 | BINARY | {0, 1} | IdentityTransform | Bernoulli |
 | NATURAL | {0, 1, ...} | IdentityTransform | Poisson |
 

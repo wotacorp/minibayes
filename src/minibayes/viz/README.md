@@ -99,6 +99,23 @@ Posterior predictive plot with uncertainty bands.
 | `ax` | Axes, optional | Existing axes |
 | `credible_interval` | float | CI width, 0-1 (default: 0.9) |
 
+### `plot_compare(waic_results, ax=None)`
+
+Model comparison plot with WAIC values and error bars.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `waic_results` | dict[str, WAICResult] | Mapping of model names to WAICResult objects |
+| `ax` | Axes, optional | Existing axes |
+
+Displays models ranked by WAIC (best at top) with point estimates and ±2 standard error intervals.
+
+```python
+waic1 = result1.waic(model1, data)
+waic2 = result2.waic(model2, data)
+fig = viz.plot_compare({"Simple": waic1, "Complex": waic2})
+```
+
 ### `summary_table(data, params=None, percentiles=None)`
 
 Formatted ASCII table of summary statistics. Returns a string.
@@ -204,4 +221,5 @@ apply_style()  # All plots now use minibayes style
 | `plot_autocorr()` | Autocorrelation by lag |
 | `plot_forest()` | Parameter box plots |
 | `plot_predictive()` | Predictions with uncertainty |
+| `plot_compare()` | Model comparison with WAIC |
 | `summary_table()` | Formatted summary statistics |

@@ -13,7 +13,7 @@
 
 ### Goals
 
-- **Minimal dependencies**: Python 3.10+ and NumPy only
+- **Minimal dependencies**: Python 3.11+ and NumPy only
 - **Small footprint**: Single-digit MB installed size
 - **Educational**: Code readable enough to learn from
 - **Production-ready**: Deployable in containers on edge devices
@@ -75,7 +75,7 @@ minibayes/
 │   ├── __init__.py       # Distribution exports
 │   ├── base.py           # Abstract base class + Support enum
 │   ├── normal.py         # Normal, plus individual files for each distribution
-│   └── ...               # 15 distributions total (see Distributions section)
+│   └── ...               # 16 distributions total (see Distributions section)
 ├── samplers/
 │   ├── __init__.py       # Sampler exports
 │   ├── base.py           # Abstract sampler interface
@@ -89,7 +89,8 @@ minibayes/
 │   ├── log.py            # LogTransform (POSITIVE)
 │   ├── logit.py          # LogitTransform (UNIT)
 │   ├── affine.py         # AffineTransform (BOUNDED)
-│   └── corr_cholesky.py  # CorrCholeskyTransform (LKJCholesky)
+│   ├── corr_cholesky.py  # CorrCholeskyTransform (LKJCholesky)
+│   └── shifted_log.py    # ShiftedLogTransform (lower-bounded)
 └── utils/
     ├── numerical.py      # ensure_rng, log_sum_exp
     ├── export.py         # save_npz, load_npz, to_json
@@ -218,21 +219,22 @@ class Model:
     """
     A Bayesian model with explicit priors and likelihood.
 
-    Priors are assumed independent (no hierarchical structure).
+    Supports hierarchical models through the p(...) API where dependencies
+    are defined by execution order.
     Transforms are derived automatically from distribution support.
 
     Parameters
     ----------
-    priors : dict[str, Distribution]
-        Prior distributions for each parameter.
-    log_likelihood : Callable[[dict, Any], float]
-        Function (params, data) -> log_likelihood value
+    priors : Callable[[ParamContext], None]
+        Function that registers parameters using p(name, dist, size=None).
+    log_likelihood : Callable[[dict, object], NDArray]
+        Function (params, data) -> pointwise log_likelihood array.
     """
 
     def __init__(
         self,
-        priors: dict[str, Distribution],
-        log_likelihood: Callable[[dict[str, float], Any], float],
+        priors: Callable[[ParamContext], None],
+        log_likelihood: Callable[[dict, object], NDArray[np.float64]],
     ): ...
 
     # -------------------------------------------------------------------------
@@ -407,27 +409,23 @@ true_sigma = 0.8
 y = true_alpha + X @ true_beta + np.random.normal(0, true_sigma, size=100)
 
 # Define model
+def priors(p):
+    p("alpha", dist.Normal(0, 10))
+    p("beta", dist.Normal(0, 5), size=3)  # Vector parameter
+    p("sigma", dist.HalfNormal(5))
+
 def log_likelihood(params, data):
     X, y = data
-    mu = params["alpha"] + X @ np.array([params["beta_1"], params["beta_2"], params["beta_3"]])
-    return dist.Normal(mu, params["sigma"]).obs_logp(y)
+    mu = params["alpha"] + X @ params["beta"]
+    return dist.Normal(mu, params["sigma"]).log_prob(y)
 
-model = mb.Model(
-    priors={
-        "alpha": dist.Normal(0, 10),
-        "beta_1": dist.Normal(0, 5),
-        "beta_2": dist.Normal(0, 5),
-        "beta_3": dist.Normal(0, 5),
-        "sigma": dist.HalfNormal(5),
-    },
-    log_likelihood=log_likelihood,
-)
+model = mb.Model(priors=priors, log_likelihood=log_likelihood)
 
 # Inspect model (no magic — everything is explicit)
-model.param_names                    # ['alpha', 'beta_1', 'beta_2', 'beta_3', 'sigma']
-model.transforms                     # {'alpha': Identity, 'beta_*': Identity, 'sigma': Log}
-model.sample_prior()                 # {'alpha': 3.2, 'beta_1': -1.1, ..., 'sigma': 2.3}
-model.log_prior({"alpha": 0, "beta_1": 0, "beta_2": 0, "beta_3": 0, "sigma": 1})  # float
+model.param_names                    # ['alpha', 'beta', 'sigma']
+model.transforms                     # {'alpha': Identity, 'beta': Identity, 'sigma': Log}
+model.sample_prior()                 # {'alpha': 3.2, 'beta': array([-1.1, 0.5, 0.2]), 'sigma': 2.3}
+model.log_prior({"alpha": 0, "beta": np.zeros(3), "sigma": 1})  # float
 
 # Run inference
 result = mb.sample(
@@ -440,12 +438,12 @@ result = mb.sample(
 
 # Results
 result.summary()
-#          mean    std     5%    50%    95%    ess  r_hat
-# alpha    2.01   0.08   1.88   2.01   2.14   2800   1.00
-# beta_1   0.98   0.09   0.84   0.98   1.13   2600   1.00
-# beta_2  -0.51   0.08  -0.64  -0.51  -0.38   2700   1.00
-# beta_3   0.31   0.08   0.18   0.31   0.44   2750   1.00
-# sigma    0.79   0.06   0.70   0.79   0.89   2400   1.00
+#             mean    std     5%    50%    95%    ess  r_hat
+# alpha       2.01   0.08   1.88   2.01   2.14   2800   1.00
+# beta[0]     0.98   0.09   0.84   0.98   1.13   2600   1.00
+# beta[1]    -0.51   0.08  -0.64  -0.51  -0.38   2700   1.00
+# beta[2]     0.31   0.08   0.18   0.31   0.44   2750   1.00
+# sigma       0.79   0.06   0.70   0.79   0.89   2400   1.00
 
 # Export for deployment
 result.save("linear_regression_posterior.npz")
@@ -579,7 +577,8 @@ class Support(Enum):
     POSITIVE = "positive"      # (0, +∞)  -> LogTransform
     UNIT = "unit"              # (0, 1)   -> LogitTransform
     BOUNDED = "bounded"        # (a, b)   -> AffineTransform
-    SIMPLEX = "simplex"        # Σxᵢ = 1  -> StickBreakingTransform (v2.0+)
+    BINARY = "binary"          # {0, 1}   -> IdentityTransform
+    NATURAL = "natural"        # {0, 1, 2, ...} -> IdentityTransform
 ```
 
 #### Continuous Distributions
@@ -632,6 +631,13 @@ class StudentT(Distribution):
     support = Support.REAL
 
     def __init__(self, df: float, loc: float = 0.0, scale: float = 1.0): ...
+
+class TruncatedNormal(Distribution):
+    """Truncated Normal distribution bounded to [lower, upper]."""
+    support = Support.BOUNDED
+
+    def __init__(self, mu: float = 0.0, sigma: float = 1.0,
+                 lower: float = -inf, upper: float = inf): ...
 ```
 
 #### Discrete Distributions
@@ -881,8 +887,8 @@ class ModelSpecError(minibayesError):
 ## Development Roadmap
 
 ### v0.1-v0.3 — COMPLETE (Foundation)
-- [x] Core distributions: Normal, HalfNormal, Exponential, Beta, Gamma, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson
-- [x] Transforms: Identity, Log, Logit, Affine (bounded)
+- [x] Core distributions: Normal, HalfNormal, Exponential, Beta, Gamma, Uniform, StudentT, LogNormal, Cauchy, Laplace, InverseGamma, Bernoulli, Poisson, TruncatedNormal
+- [x] Transforms: Identity, Log, Logit, Affine (bounded), CorrCholesky, ShiftedLog
 - [x] MetropolisHastings sampler
 - [x] AdaptiveMetropolis sampler (Haario et al.)
 - [x] Model class with priors + likelihood
