@@ -58,6 +58,8 @@ print(result.summary())
 
 The `priors` function defines your parameter distributions. The `log_likelihood` function scores how well parameters explain the data. `Model` combines them, and `sample()` runs MCMC.
 
+![Posterior predictive](images/basic_plot_predictive.png)
+
 ## Why minibayes?
 
 There are excellent Bayesian libraries available. PyMC is mature and feature-rich. NumPyro offers high performance with JAX. minibayes fills a different niche.
@@ -144,10 +146,11 @@ viz.plot_autocorr(result)      # mixing diagnostics
 viz.plot_predictive(x, preds)  # predictions with uncertainty bands
 ```
 
-<!-- TODO: Add example plot images -->
-<!-- ![Density plot](docs/images/density.png) -->
-<!-- ![Forest plot](docs/images/forest.png) -->
-<!-- ![Predictive plot](docs/images/predictive.png) -->
+![Posterior distributions](images/basic_prior_posterior.png)
+
+![Forest plot](images/basic_forest.png)
+
+![Posterior predictive check](images/basic_ppc.png)
 
 ## Notebooks
 
@@ -155,6 +158,7 @@ See the `notebooks/` folder for worked examples:
 
 | Notebook | Description |
 |----------|-------------|
+| `00_quickstart` | 5-minute introduction: model definition, sampling, visualization |
 | `01_mh_examples` | Basic Metropolis-Hastings, Normal-Normal conjugate model |
 | `02_adaptive_mh_examples` | Adaptive sampler, robust regression with Student-t |
 | `03_viz_showcase` | All visualization functions |

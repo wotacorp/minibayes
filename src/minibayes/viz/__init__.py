@@ -19,7 +19,9 @@ from minibayes.viz.plots import (
     plot_distribution,
     plot_forest,
     plot_pair,
+    plot_ppc,
     plot_predictive,
+    plot_prior_posterior,
     plot_samples,
     summary_table,
 )
@@ -35,6 +37,8 @@ __all__ = [
     "plot_autocorr",
     "plot_compare",
     "plot_distribution",
+    "plot_prior_posterior",
+    "plot_ppc",
     "summary_table",
     # Style
     "style",
