@@ -12,7 +12,7 @@ minibayes provides:
 - **Inspectable**: See exactly what transforms are applied, what log_prob computes
 - **Production-ready**: Deployable in containers on edge devices
 
-## Quick Start
+## Quick start
 
 ```python
 import numpy as np
@@ -37,7 +37,7 @@ print(result.summary())
 result.save("posterior.npz")
 ```
 
-## Model Class
+## Model class
 
 The structured way to define Bayesian models. Priors and log-likelihood are specified separately.
 
@@ -59,7 +59,7 @@ model.sample_prior()                    # {'mu': 2.3, 'sigma': 1.8}
 model.log_prob({"mu": 0, "sigma": 1}, data)  # float (sums pointwise ll)
 ```
 
-### Core Methods
+### Core methods
 
 | Method | Description |
 |--------|-------------|
@@ -75,7 +75,7 @@ model.log_prob({"mu": 0, "sigma": 1}, data)  # float (sums pointwise ll)
 | `log_prob_unconstrained(unconstrained, data)` | log_prob with Jacobian correction |
 | `validate_params(params)` | Check names and values are valid |
 
-### Automatic Transforms
+### Automatic transforms
 
 Transforms are derived from distribution support:
 
@@ -88,7 +88,7 @@ Transforms are derived from distribution support:
 
 MCMC samplers work in unconstrained space. The `log_prob_unconstrained()` method includes the Jacobian correction automatically.
 
-### Distribution Methods
+### Distribution methods
 
 All distributions provide these methods:
 
@@ -105,7 +105,7 @@ def log_likelihood(params, data):
     return dist.Normal(params["mu"], params["sigma"]).log_prob(data)  # shape (n_obs,)
 ```
 
-## The sample() Function
+## The sample() function
 
 The main entry point for inference.
 
@@ -125,7 +125,7 @@ result = mb.sample(
 )
 ```
 
-### What Happens Inside
+### What happens inside
 
 1. **Validate inputs**: Check sampler name is valid ("mh" or "adaptive_mh")
 2. **Set up RNG**: Create random generator from seed, spawn child RNGs for each chain
@@ -143,7 +143,7 @@ result = mb.sample(
 5. **Transform samples**: Convert unconstrained samples back to constrained space
 6. **Return InferenceResult**: Package samples, acceptance rates, timing
 
-#### Hierarchical Log Prior Computation
+#### Hierarchical log prior computation
 
 For hierarchical models with conditional priors, log_prior is computed by re-executing the priors function in EVALUATE mode:
 
@@ -161,7 +161,7 @@ Each `p(name, dist)` call:
 
 This approach means no explicit dependency graph is needed—execution order naturally captures the hierarchy.
 
-### Default Initialization
+### Default initialization
 
 When `initial=None`, the sampler uses prior means as the starting point:
 
@@ -176,7 +176,7 @@ When `initial=None`, the sampler uses prior means as the starting point:
 
 This provides deterministic, robust initialization without needing manual tuning. If prior means yield invalid log_prob (rare), sampling falls back to random prior draws.
 
-### Sampler Options
+### Sampler options
 
 | Sampler | Description | When to Use |
 |---------|-------------|-------------|
@@ -197,7 +197,7 @@ result = mb.sample(model, data, sampler="ensemble", num_chains=24,
     sampler_kwargs={"stretch_scale": 2.0})  # stretch_scale is optional (default=2.0)
 ```
 
-### Parallel Sampling
+### Parallel sampling
 
 For multi-chain sampling, enable parallel execution with `parallel=True`:
 
@@ -238,7 +238,7 @@ production scripts where functions are defined in importable `.py` modules.
 parallelism benefit. Parallel execution is most beneficial for larger models
 with many samples.
 
-## Inference Results
+## Inference results
 
 After sampling, results are stored in an `InferenceResult` dataclass:
 
@@ -253,7 +253,7 @@ summary = result.summary()
 # {'mu': {'mean': 2.01, 'std': 0.05, '5%': 1.93, '50%': 2.01, '95%': 2.09, 'ess': 890.2, 'r_hat': 1.001}, ...}
 ```
 
-### Derived Parameters
+### Derived parameters
 
 Add computed quantities to use with visualization and diagnostics:
 
@@ -284,7 +284,7 @@ ess = effective_sample_size(result.samples["mu"])  # Single chain
 rhat = r_hat(result.samples["mu"])  # Multi-chain: shape (num_chains, num_samples)
 ```
 
-## Model Comparison (WAIC)
+## Model comparison (WAIC)
 
 WAIC (Widely Applicable Information Criterion) estimates out-of-sample predictive accuracy for model comparison.
 
@@ -297,7 +297,7 @@ print(f"WAIC: {waic_result.waic:.1f}")
 print(f"p_waic: {waic_result.p_waic:.1f}")  # Effective number of parameters
 ```
 
-### WAICResult Fields
+### WAICResult fields
 
 | Field | Description |
 |-------|-------------|
@@ -307,7 +307,7 @@ print(f"p_waic: {waic_result.p_waic:.1f}")  # Effective number of parameters
 | `se` | Standard error of WAIC estimate |
 | `pointwise` | Per-observation contributions (shape: n_obs) |
 
-### Comparing Multiple Models
+### Comparing multiple models
 
 ```python
 from minibayes import viz
@@ -333,7 +333,7 @@ fig = viz.plot_compare(waic_results)
 - **ΔWAIC < 2×SE**: Models are statistically similar
 - **Pointwise values**: Identify influential observations
 
-## Saving and Loading
+## Saving and loading
 
 ```python
 result.save("posterior.npz")           # NPZ format (default)
@@ -342,7 +342,7 @@ result.save("posterior.json", format="json")  # JSON format
 loaded = mb.InferenceResult.load("posterior.npz")
 ```
 
-## Design Principles
+## Design principles
 
 1. **No magic**: Every operation is an explicit method call
 2. **Dict ordering preserved**: Parameter order is fixed at initialization

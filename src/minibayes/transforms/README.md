@@ -2,7 +2,19 @@
 
 Bijective transforms for mapping constrained parameters to unconstrained space in MCMC sampling.
 
-## Why Transforms?
+## Quick start
+
+```python
+from minibayes import dist
+
+# Transforms are automatic based on distribution support
+dist.Normal(0, 1).default_transform()    # IdentityTransform (REAL)
+dist.HalfNormal(1).default_transform()   # LogTransform (POSITIVE)
+dist.Beta(2, 2).default_transform()      # LogitTransform (UNIT)
+dist.Uniform(0, 10).default_transform()  # AffineTransform (BOUNDED)
+```
+
+## Why transforms?
 
 Many Bayesian parameters have constrained domains:
 - Standard deviations must be positive (σ > 0)
@@ -11,7 +23,7 @@ Many Bayesian parameters have constrained domains:
 
 MCMC samplers like Metropolis-Hastings work best in unconstrained space (ℝ). Transforms map constrained parameters θ to unconstrained parameters φ, allowing the sampler to explore freely.
 
-## The Jacobian Correction
+## Jacobian correction
 
 When we transform variables, probability densities must be adjusted by the Jacobian determinant:
 
@@ -26,7 +38,7 @@ Where:
 
 This correction ensures samples in transformed space correspond to the correct distribution in original space.
 
-## Reference Table
+## Reference table
 
 | Transform | θ domain | Forward: φ = f(θ) | Inverse: θ = g(φ) | log\|dθ/dφ\| |
 |-----------|----------|-------------------|-------------------|--------------|
@@ -41,54 +53,15 @@ Where σ(φ) = 1/(1+e⁻ᵠ) is the sigmoid function.
 
 ## Derivations
 
-### Log Transform
-For θ > 0, we use φ = log(θ):
-- Inverse: θ = exp(φ)
-- Jacobian: dθ/dφ = exp(φ) = θ
-- Log Jacobian: log(θ)
+| Transform | Jacobian dθ/dφ | Log Jacobian |
+|-----------|----------------|--------------|
+| **Log** (θ > 0) | exp(φ) = θ | log(θ) |
+| **Logit** (θ ∈ (0,1)) | θ(1-θ) | log(θ) + log(1-θ) |
+| **Affine** (θ ∈ (a,b)) | (b-a)·z(1-z) | log(θ-a) + log(b-θ) - log(b-a) |
+| **ShiftedLog** (θ > a) | θ - a | log(θ-a) |
+| **CorrCholesky** | See implementation | Complex (matrix-valued) |
 
-### Logit Transform
-For θ ∈ (0, 1), we use φ = logit(θ) = log(θ/(1-θ)):
-- Inverse: θ = sigmoid(φ) = 1/(1+e⁻ᵠ)
-- Jacobian: dθ/dφ = θ(1-θ)
-- Log Jacobian: log(θ) + log(1-θ)
-
-### Affine Transform
-For θ ∈ (a, b), we scale to (0,1) then apply logit:
-- Let z = (θ-a)/(b-a), then φ = logit(z)
-- Inverse: z = sigmoid(φ), θ = a + (b-a)z
-- Jacobian: dθ/dφ = (b-a) · z(1-z)
-- Log Jacobian: log(θ-a) + log(b-θ) - log(b-a)
-
-### ShiftedLog Transform
-For θ ∈ (a, +∞), we use φ = log(θ-a):
-- Inverse: θ = exp(φ) + a
-- Jacobian: dθ/dφ = exp(φ) = θ - a
-- Log Jacobian: log(θ-a) = φ
-
-Useful for lower-bounded parameters (e.g., TruncatedNormal with only a lower bound).
-
-### CorrCholesky Transform
-For correlation matrix Cholesky factors L (d×d lower triangular where L·Lᵀ is a correlation matrix):
-- Maps d(d-1)/2 off-diagonal elements to unconstrained space via arctanh
-- Each off-diagonal is normalized by the remaining variance before transformation
-- Diagonal elements are determined by the unit row norm constraint
-
-This transform is used automatically for LKJCholesky distributions.
-
-## Usage in minibayes
-
-Transforms are automatically selected based on distribution support:
-
-```python
-from minibayes.distributions import Normal, HalfNormal, Beta
-
-Normal(0, 1).default_transform()    # IdentityTransform (REAL)
-HalfNormal(1).default_transform()   # LogTransform (POSITIVE)
-Beta(2, 2).default_transform()      # LogitTransform (UNIT)
-```
-
-For bounded distributions, override `default_transform()` to provide bounds.
+**CorrCholesky**: Maps d(d-1)/2 off-diagonal elements to unconstrained space via arctanh. Used automatically for LKJCholesky distributions.
 
 ## References
 

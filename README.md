@@ -10,7 +10,7 @@ Lightweight Bayesian inference with (only) NumPy.
 
 Bayesian modelling and MCMC in pure Python, with NumPy as the only dependency.
 
-minibayes runs Bayesian inference without the heavyweight dependencies. No PyTensor, no JAX, no compilation step. Install it, import it, fit your model. The package is about 5 MB.
+minibayes runs Bayesian inference without the heavyweight dependencies. No PyTensor, no JAX, no compilation step. Install it, import it, fit your model. The package is less than 1 MB (+ 30 MB numpy dependency).
 
 It covers the most common use cases in Bayesian analysis: regression, A/B tests, hierarchical models with partial pooling. minibayes is designed for situations where you need something lightweight that deploys easily and integrates cleanly into existing systems.
 
