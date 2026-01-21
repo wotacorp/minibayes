@@ -87,9 +87,7 @@ def plot_density(
         max_cols = 3
         n_cols = min(n_params, max_cols)
         n_rows = (n_params + max_cols - 1) // max_cols  # ceil division
-        fig, axes_arr = plt.subplots(
-            n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows), squeeze=False
-        )
+        fig, axes_arr = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows), squeeze=False)
         axes_flat: NDArray[np.object_] = axes_arr.flatten()
         axes_list: list[Axes] = [cast("Axes", a) for a in axes_flat]
         fig_out: Figure = cast("Figure", fig)
@@ -752,8 +750,7 @@ def plot_pair(
 
     Examples
     --------
-    >>> fig = viz.plot_pair(result, params=["mu_math", "mu_reading"],
-    ...                     markers={"True": (70, 75)})
+    >>> fig = viz.plot_pair(result, params=["mu_math", "mu_reading"], markers={"True": (70, 75)})
     """
     import matplotlib.pyplot as plt
 
@@ -867,12 +864,8 @@ def plot_compare(
     sorted_names: list[str] = [name for name, _ in sorted_items]
     sorted_results: list[WAICResult] = [result for _, result in sorted_items]
 
-    waic_values: NDArray[np.float64] = np.array(
-        [r.waic for r in sorted_results], dtype=np.float64
-    )
-    se_values: NDArray[np.float64] = np.array(
-        [r.se for r in sorted_results], dtype=np.float64
-    )
+    waic_values: NDArray[np.float64] = np.array([r.waic for r in sorted_results], dtype=np.float64)
+    se_values: NDArray[np.float64] = np.array([r.se for r in sorted_results], dtype=np.float64)
 
     # Delta-WAIC from best model
     best_waic: float = float(waic_values[0])
@@ -926,6 +919,323 @@ def plot_compare(
 
     # Invert y-axis so best model is at top
     ax_plot.invert_yaxis()
+
+    plt.tight_layout()
+    return fig_out
+
+
+def plot_prior_posterior(
+    prior: Distribution,
+    posterior_samples: NDArray[np.float64],
+    parameter_name: str = "parameter",
+    ax: Axes | None = None,
+    bins: int = 30,
+    xlim: tuple[float, float] | None = None,
+) -> Figure:
+    """
+    Plot prior distribution vs posterior samples for a single parameter.
+
+    Parameters
+    ----------
+    prior : Distribution
+        Prior distribution object.
+    posterior_samples : ndarray
+        MCMC samples. Shape (num_chains, num_samples) or 1D.
+    parameter_name : str
+        Label for the x-axis (parameter name).
+    ax : Axes, optional
+        Existing axes. If None, creates new figure.
+    bins : int
+        Number of histogram bins for posterior.
+    xlim : tuple[float, float], optional
+        X-axis limits (min, max). If None, auto-computed.
+
+    Returns
+    -------
+    Figure
+        The matplotlib figure.
+
+    Examples
+    --------
+    >>> from minibayes import dist
+    >>> prior = dist.Normal(0, 1)
+    >>> posterior = result.samples["mu"]  # shape (n_chains, n_samples)
+    >>> fig = viz.plot_prior_posterior(prior, posterior, parameter_name="mu")
+    """
+    import matplotlib.pyplot as plt
+
+    # Flatten posterior samples
+    flat_posterior: NDArray[np.float64] = posterior_samples.flatten()
+
+    # Compute x-range
+    if xlim is not None:
+        x_min, x_max = xlim
+    else:
+        # Focus on posterior but extend enough to show prior shape
+        post_low: float = float(np.percentile(flat_posterior, 0.5))
+        post_high: float = float(np.percentile(flat_posterior, 99.5))
+        post_range: float = post_high - post_low
+        # Extend range by 4x posterior spread on each side to show prior curvature
+        x_min = post_low - 4 * post_range
+        x_max = post_high + 4 * post_range
+
+    x_vals: NDArray[np.float64] = np.linspace(x_min, x_max, 300)
+
+    # Compute prior PDF
+    log_prob: NDArray[np.float64] = np.asarray(prior.log_prob(x_vals), dtype=np.float64)
+    prior_pdf: NDArray[np.float64] = np.exp(log_prob)
+
+    # Create figure if needed
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=(6, 4))
+        ax_plot = cast("Axes", ax_plot)
+        fig_out: Figure = cast("Figure", fig)
+    else:
+        fig_out = cast("Figure", ax.figure)
+        ax_plot = ax
+
+    _apply_style_to_fig(fig_out)
+    _style_axes(ax_plot)
+
+    # Plot prior as filled area (shows shape even when relatively flat)
+    ax_plot.fill_between(
+        x_vals,
+        prior_pdf,
+        alpha=0.15,
+        color=PALETTE["sand"],
+        zorder=1,
+    )
+    ax_plot.plot(
+        x_vals,
+        prior_pdf,
+        color=PALETTE["sand"],
+        linestyle="-",
+        linewidth=1.5,
+        label="Prior",
+        zorder=2,
+    )
+
+    # Plot posterior histogram
+    ax_plot.hist(
+        flat_posterior,
+        bins=bins,
+        density=True,
+        alpha=0.7,
+        color=PALETTE["blue"],
+        edgecolor="white",
+        linewidth=0.5,
+        label="Posterior",
+        zorder=3,
+    )
+
+    # Add mean vertical lines
+    prior_mean: float = float(prior.mean)
+    posterior_mean: float = cast("float", np.mean(flat_posterior))
+
+    ax_plot.axvline(
+        prior_mean,
+        color=PALETTE["sand"],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.8,
+        zorder=4,
+        label=f"Prior mean={prior_mean:.2g}",
+    )
+    ax_plot.axvline(
+        posterior_mean,
+        color=PALETTE["blue"],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.8,
+        zorder=4,
+        label=f"Post. mean={posterior_mean:.2g}",
+    )
+
+    ax_plot.set_xlabel(parameter_name, fontsize=10, color="#4A4A4A")
+    ax_plot.set_ylabel("Density", fontsize=10, color="#4A4A4A")
+
+    # Reorder legend: group by color (prior items, then posterior items)
+    handles, labels = ax_plot.get_legend_handles_labels()
+    # Order: Prior, Prior mean, Posterior, Post. mean
+    order = [0, 2, 1, 3]  # Prior line, Prior mean, Posterior hist, Post. mean
+    ax_plot.legend(
+        [handles[i] for i in order],
+        [labels[i] for i in order],
+        fontsize=8,
+        frameon=False,
+        loc="upper right",
+    )
+
+    plt.tight_layout()
+    return fig_out
+
+
+def plot_ppc(
+    y_observed: NDArray[np.float64],
+    posterior_predictive: NDArray[np.float64],
+    prior_predictive: NDArray[np.float64] | None = None,
+    ax: Axes | None = None,
+    bins: int = 30,
+    xlim: tuple[float, float] | None = None,
+) -> Figure:
+    """
+    Plot posterior predictive check comparing observed data to predictions.
+
+    Parameters
+    ----------
+    y_observed : ndarray
+        1D array of observed outcome data.
+    posterior_predictive : ndarray
+        1D array of simulated y values from posterior predictive.
+    prior_predictive : ndarray, optional
+        1D array of simulated y values from prior predictive. If None, not plotted.
+    ax : Axes, optional
+        Existing axes. If None, creates new figure.
+    bins : int
+        Number of histogram bins.
+    xlim : tuple[float, float], optional
+        X-axis limits (min, max). If None, auto-computed.
+
+    Returns
+    -------
+    Figure
+        The matplotlib figure.
+
+    Examples
+    --------
+    >>> y_obs = data["y"]
+    >>> post_pred = result.predict(predictive_fn)["y_pred"].flatten()
+    >>> fig = viz.plot_ppc(y_obs, post_pred)
+    """
+    import matplotlib.pyplot as plt
+
+    # Flatten all inputs
+    y_obs_flat: NDArray[np.float64] = y_observed.flatten()
+    post_flat: NDArray[np.float64] = posterior_predictive.flatten()
+    if prior_predictive is not None:
+        prior_flat: NDArray[np.float64] = prior_predictive.flatten()
+
+    # Compute x-range
+    if xlim is not None:
+        x_min, x_max = xlim
+    else:
+        all_data: list[NDArray[np.float64]] = [y_obs_flat, post_flat]
+        if prior_predictive is not None:
+            all_data.append(prior_flat)
+        combined: NDArray[np.float64] = np.concatenate(all_data)
+        x_min = float(np.percentile(combined, 1))
+        x_max = float(np.percentile(combined, 99))
+        margin: float = (x_max - x_min) * 0.1
+        x_min -= margin
+        x_max += margin
+
+    # Compute bin edges for consistent binning across all histograms
+    bin_edges: list[float] = np.linspace(x_min, x_max, bins + 1).tolist()
+
+    # Create figure if needed
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=(6, 4))
+        ax_plot = cast("Axes", ax_plot)
+        fig_out: Figure = cast("Figure", fig)
+    else:
+        fig_out = cast("Figure", ax.figure)
+        ax_plot = ax
+
+    _apply_style_to_fig(fig_out)
+    _style_axes(ax_plot)
+
+    # Plot prior predictive as filled histogram (background, if provided)
+    if prior_predictive is not None:
+        ax_plot.hist(
+            prior_flat,
+            bins=bin_edges,
+            density=True,
+            alpha=0.3,
+            color=PALETTE["sand"],
+            edgecolor="white",
+            linewidth=0.5,
+            label="Prior predictive",
+            zorder=1,
+        )
+
+    # Plot posterior predictive as filled histogram
+    ax_plot.hist(
+        post_flat,
+        bins=bin_edges,
+        density=True,
+        alpha=0.5,
+        color=PALETTE["blue"],
+        edgecolor="white",
+        linewidth=0.5,
+        label="Posterior predictive",
+        zorder=2,
+    )
+
+    # Plot observed data as tick marks along x-axis
+    y_max: float = float(ax_plot.get_ylim()[1])
+    tick_height: float = y_max * 0.08  # 8% of plot height
+    ax_plot.vlines(
+        y_obs_flat,
+        ymin=0,
+        ymax=tick_height,
+        color=PALETTE["terracotta"],
+        linewidth=1.2,
+        label="Observed",
+        zorder=4,
+    )
+
+    # Add mean vertical lines
+    obs_mean: float = cast("float", np.mean(y_obs_flat))
+    post_pred_mean: float = cast("float", np.mean(post_flat))
+
+    ax_plot.axvline(
+        obs_mean,
+        color=PALETTE["terracotta"],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.8,
+        zorder=5,
+        label=f"Obs. mean={obs_mean:.2g}",
+    )
+    ax_plot.axvline(
+        post_pred_mean,
+        color=PALETTE["blue"],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.8,
+        zorder=5,
+        label=f"Post. mean={post_pred_mean:.2g}",
+    )
+    if prior_predictive is not None:
+        prior_pred_mean: float = cast("float", np.mean(prior_flat))
+        ax_plot.axvline(
+            prior_pred_mean,
+            color=PALETTE["sand"],
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.8,
+            zorder=5,
+            label=f"Prior mean={prior_pred_mean:.2g}",
+        )
+
+    ax_plot.set_xlabel("y", fontsize=10, color="#4A4A4A")
+    ax_plot.set_ylabel("Density", fontsize=10, color="#4A4A4A")
+    ax_plot.set_ylim(bottom=0)
+
+    # Reorder legend: group by color
+    handles, labels = ax_plot.get_legend_handles_labels()
+    if prior_predictive is not None:
+        # Order: Prior pred, Prior mean, Post pred, Post mean, Observed, Obs mean
+        order = [0, 5, 1, 4, 2, 3]
+    else:
+        # Order: Post pred, Post mean, Observed, Obs mean
+        order = [0, 3, 1, 2]
+    ax_plot.legend(
+        [handles[i] for i in order],
+        [labels[i] for i in order],
+        fontsize=8,
+        frameon=False,
+    )
 
     plt.tight_layout()
     return fig_out

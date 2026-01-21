@@ -53,6 +53,8 @@ class TestVizImport:
         assert hasattr(viz, "plot_predictive")
         assert hasattr(viz, "plot_autocorr")
         assert hasattr(viz, "plot_distribution")
+        assert hasattr(viz, "plot_prior_posterior")
+        assert hasattr(viz, "plot_ppc")
         assert hasattr(viz, "summary_table")
 
     def test_import_style(self):
@@ -569,5 +571,165 @@ class TestPlotCompare:
         }
 
         fig = plot_compare(waic_results)
+        assert fig is not None
+        plt.close(fig)
+
+
+class TestPlotPriorPosterior:
+    """Tests for plot_prior_posterior function."""
+
+    def test_basic(self) -> None:
+        """Test basic prior vs posterior plot."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes import dist
+        from minibayes.viz import plot_prior_posterior
+
+        prior = dist.Normal(0, 1)
+        rng = np.random.default_rng(42)
+        posterior = rng.normal(0.5, 0.2, (2, 500))
+
+        fig = plot_prior_posterior(prior, posterior, parameter_name="mu")
+        assert fig is not None
+        plt.close(fig)
+
+    def test_positive_support(self) -> None:
+        """Test with positive-support distribution."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes import dist
+        from minibayes.viz import plot_prior_posterior
+
+        prior = dist.HalfNormal(1)
+        rng = np.random.default_rng(42)
+        posterior = np.abs(rng.normal(0.5, 0.2, (2, 500)))
+
+        fig = plot_prior_posterior(prior, posterior, parameter_name="sigma")
+        assert fig is not None
+        plt.close(fig)
+
+    def test_bounded_support(self) -> None:
+        """Test with bounded distribution."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes import dist
+        from minibayes.viz import plot_prior_posterior
+
+        prior = dist.Uniform(0, 1)
+        rng = np.random.default_rng(42)
+        posterior = rng.beta(5, 2, (2, 500))
+
+        fig = plot_prior_posterior(prior, posterior, parameter_name="p")
+        assert fig is not None
+        plt.close(fig)
+
+    def test_1d_samples(self) -> None:
+        """Test with 1D posterior samples."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes import dist
+        from minibayes.viz import plot_prior_posterior
+
+        prior = dist.Normal(0, 1)
+        rng = np.random.default_rng(42)
+        posterior = rng.normal(0.5, 0.2, 1000)
+
+        fig = plot_prior_posterior(prior, posterior)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_custom_ax(self) -> None:
+        """Test with provided axes."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes import dist
+        from minibayes.viz import plot_prior_posterior
+
+        prior = dist.Normal(0, 1)
+        rng = np.random.default_rng(42)
+        posterior = rng.normal(0.5, 0.2, 1000)
+
+        fig, ax = plt.subplots()
+        result_fig = plot_prior_posterior(prior, posterior, ax=ax)
+        assert result_fig is fig
+        plt.close(fig)
+
+
+class TestPlotPPC:
+    """Tests for plot_ppc function."""
+
+    def test_basic(self) -> None:
+        """Test basic PPC plot."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_ppc
+
+        rng = np.random.default_rng(42)
+        y_obs = rng.normal(5, 1, 100)
+        post_pred = rng.normal(5.1, 1.1, 1000)
+
+        fig = plot_ppc(y_obs, post_pred)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_with_prior_predictive(self) -> None:
+        """Test with prior predictive included."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_ppc
+
+        rng = np.random.default_rng(42)
+        y_obs = rng.normal(5, 1, 100)
+        prior_pred = rng.normal(0, 3, 1000)
+        post_pred = rng.normal(5.1, 1.1, 1000)
+
+        fig = plot_ppc(y_obs, post_pred, prior_predictive=prior_pred)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_custom_ax(self) -> None:
+        """Test with provided axes."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_ppc
+
+        rng = np.random.default_rng(42)
+        y_obs = rng.normal(5, 1, 100)
+        post_pred = rng.normal(5.1, 1.1, 1000)
+
+        fig, ax = plt.subplots()
+        result_fig = plot_ppc(y_obs, post_pred, ax=ax)
+        assert result_fig is fig
+        plt.close(fig)
+
+    def test_different_scales(self) -> None:
+        """Test with data at different scales."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("Agg")
+        from minibayes.viz import plot_ppc
+
+        rng = np.random.default_rng(42)
+        y_obs = rng.normal(1000, 50, 100)
+        post_pred = rng.normal(1010, 55, 1000)
+
+        fig = plot_ppc(y_obs, post_pred)
         assert fig is not None
         plt.close(fig)
