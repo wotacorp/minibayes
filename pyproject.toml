@@ -33,6 +33,10 @@ dev = [
 ]
 viz = ["matplotlib>=3.7.0"]
 notebooks = ["matplotlib>=3.7.0", "seaborn>=0.12.0", "jupyter>=1.0.0"]
+all = [
+    "minibayes[viz]",
+    "minibayes[dev]",
+]
 
 [project.urls]
 Homepage = "https://github.com/theoradusz/minibayes"
