@@ -1,4 +1,4 @@
-# minibayes.viz
+# Visualization
 
 Lightweight visualization module for MCMC diagnostics and Bayesian analysis.
 
@@ -12,7 +12,7 @@ pip install minibayes[viz]
 
 This installs matplotlib (>= 3.7.0) as a dependency.
 
-## Quick Start
+## Quick start
 
 ```python
 import minibayes as mb
@@ -31,7 +31,7 @@ viz.plot_density(result)
 viz.plot_samples(result)
 ```
 
-## API Reference
+## API reference
 
 All plot functions accept flexible input types:
 
@@ -116,6 +116,75 @@ waic2 = result2.waic(model2, data)
 fig = viz.plot_compare({"Simple": waic1, "Complex": waic2})
 ```
 
+### `plot_distribution(distributions, x=None, ax=None, k_max=20)`
+
+Plot PDF/PMF for one or more distributions. Automatically detects continuous vs discrete.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `distributions` | Distribution or dict | Single distribution or dict mapping labels to distributions |
+| `x` | ndarray, optional | Points for continuous PDFs (auto-generated if None) |
+| `ax` | Axes, optional | Existing axes |
+| `k_max` | int | Max k for discrete PMF plots (default: 20) |
+
+```python
+from minibayes import dist, viz
+viz.plot_distribution({"N(0,1)": dist.Normal(0, 1), "N(0,2)": dist.Normal(0, 2)})
+```
+
+### `plot_pair(data, params=None, markers=None, subsample=2000, alpha=0.15, ax=None)`
+
+Joint posterior as 2D scatter plot. Shows correlation structure between two parameters.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `data` | InferenceResult, dict | MCMC samples |
+| `params` | list[str], optional | Exactly 2 parameters to plot (None = first 2) |
+| `markers` | dict, optional | Named markers: `{"True": (x, y)}` |
+| `subsample` | int | Max points to plot for performance (default: 2000) |
+| `alpha` | float | Point transparency (default: 0.15) |
+| `ax` | Axes, optional | Existing axes |
+
+```python
+viz.plot_pair(result, params=["mu", "sigma"], markers={"True": (0, 1)})
+```
+
+### `plot_prior_posterior(prior, posterior_samples, parameter_name="parameter", ax=None, bins=30, xlim=None)`
+
+Compare prior distribution vs posterior samples for a single parameter.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prior` | Distribution | Prior distribution object |
+| `posterior_samples` | ndarray | MCMC samples (any shape, will be flattened) |
+| `parameter_name` | str | X-axis label |
+| `ax` | Axes, optional | Existing axes |
+| `bins` | int | Histogram bins (default: 30) |
+| `xlim` | tuple, optional | X-axis limits (min, max) |
+
+```python
+from minibayes import dist, viz
+viz.plot_prior_posterior(dist.Normal(0, 10), result.samples["mu"], parameter_name="mu")
+```
+
+### `plot_ppc(y_observed, posterior_predictive, prior_predictive=None, ax=None, bins=30, xlim=None)`
+
+Posterior predictive check comparing observed data to predictions.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `y_observed` | ndarray | Observed outcome data (1D) |
+| `posterior_predictive` | ndarray | Simulated y from posterior predictive |
+| `prior_predictive` | ndarray, optional | Simulated y from prior predictive (optional) |
+| `ax` | Axes, optional | Existing axes |
+| `bins` | int | Histogram bins (default: 30) |
+| `xlim` | tuple, optional | X-axis limits (min, max) |
+
+```python
+post_pred = result.predict(predictive_fn)["y_pred"].flatten()
+viz.plot_ppc(y_obs, post_pred)
+```
+
 ### `summary_table(data, params=None, percentiles=None)`
 
 Formatted ASCII table of summary statistics. Returns a string.
@@ -136,7 +205,7 @@ Example output:
  sigma | 0.4921 | 0.0412 | 0.4261 | 0.4898 | 0.5612 | 201.5 | 1.000
 ```
 
-## Composable Plots
+## Composable plots
 
 All functions support custom axes for multi-panel figures:
 
@@ -154,72 +223,38 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Style System
+## Style system
 
-### Color Palette
-
-```python
-from minibayes.viz import PALETTE, CHAIN_COLORS
-
-# Named colors for custom plots
-PALETTE = {
-    "blue": "#88B4D4",       # Pale blue
-    "terracotta": "#C97B63", # Terracotta
-    "sage": "#8FB996",       # Sage green
-    "pink": "#E8B4BC",       # Pastel pink
-    "lavender": "#A89CC8",   # Lavender
-    "mustard": "#D4B86A",    # Muted gold
-    "sand": "#C9BDA8",       # Warm sand
-    "gray": "#8E9AAB",       # Cool slate
-}
-
-# 10 distinct colors for multi-chain plots
-CHAIN_COLORS = [
-    "#88B4D4", "#C97B63", "#8FB996", "#E8B4BC", "#A89CC8",
-    "#D4B86A", "#6BAAAA", "#E9C46A", "#C9A0DC", "#7DAFA5",
-]
-```
-
-### Style Context Manager
-
-Apply minibayes style to custom matplotlib plots:
+Apply minibayes styling to custom plots:
 
 ```python
-from minibayes.viz import style, PALETTE
+from minibayes.viz import style, apply_style, PALETTE, CHAIN_COLORS
 
+# Context manager for temporary styling
 with style():
     fig, ax = plt.subplots()
     ax.scatter(x, y, c=PALETTE["terracotta"])
-    ax.plot(x, line, c=PALETTE["sage"])
-    plt.show()
+
+# Or apply globally
+apply_style()
 ```
 
-### Global Style
+**Colors**: `PALETTE` provides named colors (blue, terracotta, sage, pink, lavender, mustard, sand, gray). `CHAIN_COLORS` provides 10 distinct colors for multi-chain plots.
 
-Apply style to all subsequent plots:
-
-```python
-from minibayes.viz import apply_style
-
-apply_style()  # All plots now use minibayes style
-```
-
-## Style Specifications
-
-- **Background**: White (#FFFFFF)
-- **Grid**: Light gray (#F0F0F0), subtle
-- **Text**: Charcoal (#4A4A4A)
-- **Spines**: Minimal (left/bottom only, #CCCCCC)
-- **DPI**: 150 for crisp display
+**Style specs**: White background, light gray grid (#F0F0F0), charcoal text (#4A4A4A), minimal spines, 150 DPI.
 
 ## Summary
 
 | Function | Purpose |
 |----------|---------|
 | `plot_density()` | Posterior histograms |
-| `plot_samples()` | Samples over iteration |
+| `plot_samples()` | Trace plots (samples over iteration) |
 | `plot_autocorr()` | Autocorrelation by lag |
 | `plot_forest()` | Parameter box plots |
-| `plot_predictive()` | Predictions with uncertainty |
+| `plot_predictive()` | Predictions with uncertainty bands |
 | `plot_compare()` | Model comparison with WAIC |
+| `plot_distribution()` | Prior/likelihood PDF/PMF |
+| `plot_pair()` | Joint posterior scatter |
+| `plot_prior_posterior()` | Prior vs posterior comparison |
+| `plot_ppc()` | Posterior predictive check |
 | `summary_table()` | Formatted summary statistics |

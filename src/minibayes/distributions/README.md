@@ -2,18 +2,29 @@
 
 Probability distributions for specifying priors and likelihoods in Bayesian inference.
 
-## Why Distributions?
+## Quick start
 
-In Bayesian inference, we need probability distributions to:
-- Define prior beliefs about parameters before observing data
-- Compute likelihoods of data given parameters
-- Sample from posteriors via MCMC
+```python
+from minibayes import dist
+import numpy as np
 
-Each distribution provides two key operations:
-- `log_prob(x)`: Evaluate log probability density at a point
-- `sample(size, rng)`: Draw random samples
+# Create distributions
+prior_mu = dist.Normal(loc=0, scale=10)
+prior_sigma = dist.HalfNormal(scale=5)
 
-## Available Distributions
+# Evaluate log probability
+prior_mu.log_prob(2.5)        # float
+prior_mu.log_prob([1, 2, 3])  # ndarray
+
+# Sample from distributions
+rng = np.random.default_rng(42)
+samples = prior_sigma.sample(size=1000, rng=rng)
+
+# Get automatic transform for MCMC
+prior_sigma.default_transform()  # LogTransform
+```
+
+## Available distributions
 
 ### Continuous - Unbounded (REAL)
 
@@ -56,7 +67,7 @@ Each distribution provides two key operations:
 | **Bernoulli** | {0, 1} | prob (p) | Binary outcomes, classification |
 | **Poisson** | {0, 1, 2, ...} | rate (λ) | Count data, rare events |
 
-## Log-Probability Formulas
+## Log-probability formulas
 
 ### Continuous
 
@@ -86,7 +97,7 @@ Each distribution provides two key operations:
 
 All distributions return -∞ outside their support.
 
-## Support and Transforms
+## Support and transforms
 
 Distributions are automatically paired with transforms based on their support:
 
@@ -99,93 +110,34 @@ Distributions are automatically paired with transforms based on their support:
 | BINARY | {0, 1} | IdentityTransform | Bernoulli |
 | NATURAL | {0, 1, ...} | IdentityTransform | Poisson |
 
-Call `dist.default_transform()` to get the appropriate transform.
+**Note**: Discrete distributions and MultivariateNormal are for likelihoods, not sampled parameters. LKJCholesky uses `CorrCholeskyTransform`.
 
-**Note:** Discrete distributions (Bernoulli, Poisson) and MultivariateNormal are primarily used in likelihood functions, not as sampled parameters. LKJCholesky uses `CorrCholeskyTransform` for sampling.
-
-## Usage
+## Multivariate distributions
 
 ```python
-from minibayes import dist
+# MultivariateNormal for correlated outcomes
+mvn = dist.MultivariateNormal(mean=np.zeros(2), cov=np.eye(2))
+mvn.log_prob(np.array([0.1, 0.2]))  # Single observation
 
-# Create distributions
-prior_mu = dist.Normal(loc=0, scale=10)
-prior_sigma = dist.HalfNormal(scale=5)
-prior_p = dist.Beta(alpha=2, beta=2)
-
-# Evaluate log probability
-prior_mu.log_prob(2.5)        # float
-prior_mu.log_prob([1, 2, 3])  # ndarray
-
-# Sample from distributions
-import numpy as np
-rng = np.random.default_rng(42)
-samples = prior_sigma.sample(size=1000, rng=rng)
-
-# Get transform for MCMC
-transform = prior_sigma.default_transform()  # LogTransform
-
-# MultivariateNormal for correlated outcomes (use in likelihood)
-mean = np.array([0.0, 0.0])
-cov = np.array([[1.0, 0.5], [0.5, 1.0]])
-mvn = dist.MultivariateNormal(mean=mean, cov=cov)
-mvn.log_prob(np.array([0.1, 0.2]))      # Single observation -> float
-mvn.log_prob(np.array([[0, 0], [1, 1]])) # Batch -> ndarray
-mvn.obs_logp(data)                       # Sum of log_prob for batch
-
-# LKJCholesky for correlation matrix priors (use shape= for matrix params)
+# LKJCholesky for correlation matrix priors
 lkj = dist.LKJCholesky(dim=2, eta=2.0)
-L = lkj.sample(rng=rng)                  # (2, 2) lower triangular Cholesky
-corr = L @ L.T                           # Correlation matrix
-lkj.log_prob(L)                          # Log density of Cholesky factor
-
-# In a model with unknown covariance:
-def priors(p):
-    sigma_1 = p("sigma_1", dist.HalfNormal(10))
-    sigma_2 = p("sigma_2", dist.HalfNormal(10))
-    L_corr = p("L_corr", dist.LKJCholesky(dim=2, eta=2.0), shape=(2, 2))
+L = lkj.sample(rng=rng)  # (2, 2) lower triangular Cholesky
+corr = L @ L.T           # Correlation matrix
 ```
 
-## Parameterization Notes
+## Parameterization
 
-### Rate vs Scale
+minibayes uses **rate parameterization** (common in Bayesian inference, matching Stan/PyMC):
 
-Some libraries use scale parameterization, others use rate. minibayes uses:
+| Distribution | minibayes | NumPy/SciPy |
+|--------------|-----------|-------------|
+| Exponential | rate (λ) | scale (1/λ) |
+| Gamma | shape, rate | shape, scale |
 
-| Distribution | minibayes | NumPy | SciPy |
-|--------------|-----------|-------|-------|
-| Exponential | rate (λ) | scale (1/λ) | scale (1/λ) |
-| Gamma | shape, rate | shape, scale | a, scale |
-
-The rate parameterization is common in Bayesian inference (Stan, PyMC).
-
-### Gamma Distribution
-
-The Gamma PDF with shape α and rate β is:
-```
-p(x) = (β^α / Γ(α)) x^(α-1) exp(-βx)
-```
-
-To convert from NumPy/SciPy (shape, scale) to minibayes (shape, rate):
-```python
-rate = 1 / scale
-```
+Convert from NumPy/SciPy: `rate = 1 / scale`
 
 ## References
 
-- [Wikipedia: Normal Distribution](https://en.wikipedia.org/wiki/Normal_distribution)
-- [Wikipedia: Student's t-distribution](https://en.wikipedia.org/wiki/Student%27s_t-distribution)
-- [Wikipedia: Cauchy Distribution](https://en.wikipedia.org/wiki/Cauchy_distribution)
-- [Wikipedia: Laplace Distribution](https://en.wikipedia.org/wiki/Laplace_distribution)
-- [Wikipedia: Half-Normal Distribution](https://en.wikipedia.org/wiki/Half-normal_distribution)
-- [Wikipedia: Exponential Distribution](https://en.wikipedia.org/wiki/Exponential_distribution)
-- [Wikipedia: Gamma Distribution](https://en.wikipedia.org/wiki/Gamma_distribution)
-- [Wikipedia: Log-Normal Distribution](https://en.wikipedia.org/wiki/Log-normal_distribution)
-- [Wikipedia: Inverse-Gamma Distribution](https://en.wikipedia.org/wiki/Inverse-gamma_distribution)
-- [Wikipedia: Beta Distribution](https://en.wikipedia.org/wiki/Beta_distribution)
-- [Wikipedia: Bernoulli Distribution](https://en.wikipedia.org/wiki/Bernoulli_distribution)
-- [Wikipedia: Poisson Distribution](https://en.wikipedia.org/wiki/Poisson_distribution)
-- [Wikipedia: Multivariate Normal Distribution](https://en.wikipedia.org/wiki/Multivariate_normal_distribution)
-- [Stan LKJ Correlation Distribution](https://mc-stan.org/docs/functions-reference/correlation_matrix_distributions.html)
-- [Stan Functions Reference](https://mc-stan.org/docs/functions-reference/)
+- [Stan Functions Reference](https://mc-stan.org/docs/functions-reference/) - Comprehensive distribution documentation
 - [PyMC Distributions](https://www.pymc.io/projects/docs/en/latest/api/distributions.html)
+- [Stan LKJ Correlation Distribution](https://mc-stan.org/docs/functions-reference/correlation_matrix_distributions.html)
