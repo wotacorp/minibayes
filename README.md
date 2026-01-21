@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/logo.png" alt="minibayes logo" width="400">
+</p>
+
 # minibayes
 
 Lightweight Bayesian inference with (only) NumPy.
@@ -27,7 +31,7 @@ Everything (viz + dev tools):
 pip install minibayes[all]
 ```
 
-## Quick Start
+## Quick start
 
 A robust linear regression that handles outliers. The Student-t likelihood downweights extreme observations instead of letting them dominate the fit.
 
@@ -97,7 +101,7 @@ Normal, HalfNormal, StudentT, Cauchy, Laplace, Exponential, Gamma, LogNormal, In
 - Save/load results in NPZ or JSON format
 - Memory safety with configurable `max_samples` and `max_memory_mb` limits
 
-## More Examples
+## More examples
 
 **Hierarchical model with partial pooling:**
 
