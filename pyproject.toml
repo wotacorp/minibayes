@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "minibayes"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A lightweight library for Bayesian inference designed for production deployment on resource-constrained environments."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -50,6 +50,8 @@ Issues = "https://github.com/theoradusz/minibayes/issues"
 # ============================================================================
 # SETUPTOOLS CONFIG
 # ============================================================================
+
+[tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
 where = ["src"]

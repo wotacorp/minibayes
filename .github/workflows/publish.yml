@@ -1,0 +1,40 @@
+name: Publish to CodeArtifact
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::xxxxxxxxxxxx:role/github-actions-minibayes-codeartifact-publish
+          aws-region: ap-northeast-1
+
+      - name: Login to CodeArtifact
+        run: aws codeartifact login --tool twine --domain wotacorp --repository pypi
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to CodeArtifact
+        run: twine upload --repository codeartifact dist/*
