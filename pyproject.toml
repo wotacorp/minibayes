@@ -9,9 +9,11 @@ description = "A lightweight library for Bayesian inference designed for product
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "radusz", email = "theo@radusz.com" }]
+license = { file = "LICENSE.txt" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

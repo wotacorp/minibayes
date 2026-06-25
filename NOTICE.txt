@@ -1,0 +1,2 @@
+minibayes
+Copyright 2026 WOTA CORP.
