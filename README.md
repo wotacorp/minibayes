@@ -208,3 +208,8 @@ uv run ruff format src     # formatting
 ## Maintainer
 
 [@theoradusz](https://github.com/theoradusz)
+
+## License
+
+minibayes is licensed under the [Apache License 2.0](LICENSE.txt).
+Copyright 2026 WOTA CORP.
