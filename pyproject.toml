@@ -129,7 +129,8 @@ docstring-code-format = true
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
-warn_unused_ignores = true
+# Disabled: whether an ignore is needed varies with numpy/matplotlib stub versions
+warn_unused_ignores = false
 disallow_untyped_defs = true
 disallow_any_unimported = true
 disallow_any_expr = true
