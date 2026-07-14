@@ -114,7 +114,7 @@ ignore = [
 known-first-party = ["minibayes"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"] # allow assert in tests
+"tests/*" = ["S101", "N806"] # allow assert and uppercase math variables (L, R, J) in tests
 
 [tool.ruff.format]
 quote-style = "double"

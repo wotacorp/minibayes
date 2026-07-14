@@ -511,7 +511,7 @@ class TestPlotPair:
         matplotlib.use("Agg")
         from minibayes.viz import plot_pair
 
-        single_param = {"a": np.random.randn(2, 100)}
+        single_param = {"a": np.random.default_rng(42).standard_normal((2, 100))}
         with pytest.raises(ValueError, match="requires at least 2 parameters"):
             plot_pair(single_param)
 
