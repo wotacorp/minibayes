@@ -1238,12 +1238,9 @@ def plot_ppc(
 
     # Reorder legend: group by color
     handles, labels = ax_plot.get_legend_handles_labels()
-    if prior_predictive is not None:
-        # Order: Prior pred, Prior mean, Post pred, Post mean, Observed, Obs mean
-        order = [0, 5, 1, 4, 2, 3]
-    else:
-        # Order: Post pred, Post mean, Observed, Obs mean
-        order = [0, 3, 1, 2]
+    # With prior: Prior pred, Prior mean, Post pred, Post mean, Observed, Obs mean
+    # Without: Post pred, Post mean, Observed, Obs mean
+    order = [0, 5, 1, 4, 2, 3] if prior_predictive is not None else [0, 3, 1, 2]
     ax_plot.legend(
         [handles[i] for i in order],
         [labels[i] for i in order],

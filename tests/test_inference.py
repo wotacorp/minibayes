@@ -14,6 +14,7 @@
 
 """End-to-end tests for mb.sample()."""
 
+import os
 import time
 
 import numpy as np
@@ -487,6 +488,10 @@ class TestSampleParallel:
 
         assert result.samples["x"].shape == (1, 50)
 
+    @pytest.mark.skipif(
+        os.environ.get("MINIBAYES_BENCHMARK") != "1",
+        reason="timing-sensitive benchmark; set MINIBAYES_BENCHMARK=1 to run",
+    )
     def test_parallel_speedup_with_large_workload(self) -> None:
         """Test that parallel execution provides speedup for large workloads.
 

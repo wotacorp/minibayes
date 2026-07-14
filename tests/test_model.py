@@ -16,6 +16,7 @@
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from scipy import stats
 
 from minibayes import dist
@@ -28,7 +29,6 @@ from minibayes.transforms import (
     LogitTransform,
     LogTransform,
 )
-from numpy.typing import NDArray
 
 
 def simple_log_likelihood(
