@@ -19,6 +19,8 @@ A lightweight library for Bayesian inference designed for production
 deployment on resource-constrained environments.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from minibayes import distributions as dist
 from minibayes.comparison import WAICResult, waic
 from minibayes.inference import sample
@@ -26,7 +28,10 @@ from minibayes.model import Model
 from minibayes.predictive import sample_posterior_predictive, sample_prior_predictive
 from minibayes.results import InferenceResult
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("minibayes")
+except PackageNotFoundError:  # pragma: no cover - package not installed
+    __version__ = "0.0.0"
 
 __all__ = [
     "sample",
