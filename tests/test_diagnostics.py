@@ -142,6 +142,31 @@ class TestSummary:
         assert "90%" in result["x"]
         assert "5%" not in result["x"]
 
+    def test_summary_non_integral_percentiles(self) -> None:
+        """Test non-integral percentiles (e.g. a 95% interval)."""
+        rng = np.random.default_rng(42)
+        samples: dict[str, NDArray[np.float64]] = {
+            "x": rng.standard_normal(100),
+        }
+        result = summary(samples, percentiles=[2.5, 97.5])
+
+        assert "2.5%" in result["x"]
+        assert "97.5%" in result["x"]
+        assert result["x"]["2.5%"] < result["x"]["97.5%"]
+
+    def test_summary_integral_float_percentiles_keep_int_keys(self) -> None:
+        """Test 5.0 and 5 produce the same key, so keys stay stable."""
+        rng = np.random.default_rng(42)
+        samples: dict[str, NDArray[np.float64]] = {
+            "x": rng.standard_normal(100),
+        }
+        from_float = summary(samples, percentiles=[5.0, 95.0])
+        from_int = summary(samples, percentiles=[5, 95])
+
+        assert set(from_float["x"]) == set(from_int["x"])
+        assert "5%" in from_float["x"]
+        assert "5.0%" not in from_float["x"]
+
     def test_summary_multichain_includes_rhat(self) -> None:
         """Test summary includes R-hat for multi-chain samples."""
         rng = np.random.default_rng(42)

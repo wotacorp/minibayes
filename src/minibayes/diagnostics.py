@@ -161,7 +161,7 @@ def r_hat(chains: NDArray[np.float64]) -> float:
 def _summarize_2d(
     name: str,
     arr: NDArray[np.float64],
-    percentiles: list[int],
+    percentiles: list[float],
 ) -> dict[str, float]:
     """Summarize a 2D array (num_chains, num_samples)."""
     flat: NDArray[np.float64] = arr.flatten()
@@ -173,7 +173,7 @@ def _summarize_2d(
 
     # Compute percentiles
     for p in percentiles:
-        key: str = f"{p}%"
+        key: str = f"{p:g}%"
         stats[key] = cast("float", np.percentile(flat, p))
 
     # ESS: compute per chain, average
@@ -211,7 +211,7 @@ def _warn_if_non_converged(name: str, stats: dict[str, float]) -> None:
 
 def summary(
     samples: dict[str, NDArray[np.float64]],
-    percentiles: list[int] | None = None,
+    percentiles: list[float] | None = None,
 ) -> dict[str, dict[str, float]]:
     """
     Compute summary statistics for all parameters.
@@ -222,13 +222,16 @@ def summary(
         Samples for each parameter.
         Scalars: shape (num_chains, num_samples).
         Vectors: shape (num_chains, num_samples, size).
-    percentiles : list[int], optional
+    percentiles : list[float], optional
         Percentiles to compute. Default: [5, 50, 95].
+        Non-integral values are allowed (e.g. 2.5 / 97.5 for a 95% interval).
 
     Returns
     -------
     dict[str, dict[str, float]]
         Summary with keys: mean, std, percentiles, ess, r_hat per parameter.
+        Percentile keys are formatted with %g, so 5, 5.0 and 2.5 become
+        "5%", "5%" and "2.5%" respectively.
         Vector parameters are expanded to name[0], name[1], etc.
         r_hat is NaN for single chain.
     """

@@ -475,7 +475,7 @@ def _compute_autocorr(samples: NDArray[np.float64], max_lag: int) -> NDArray[np.
 def summary_table(
     data: InferenceResult | dict[str, NDArray[np.float64]] | dict[str, dict[str, float]],
     params: list[str] | None = None,
-    percentiles: list[int] | None = None,
+    percentiles: list[float] | None = None,
 ) -> str:
     """
     Generate formatted summary table.
@@ -486,7 +486,7 @@ def summary_table(
         MCMC samples or pre-computed summary statistics.
     params : list[str], optional
         Parameters to include. None = all.
-    percentiles : list[int], optional
+    percentiles : list[float], optional
         Percentiles to show. Default: [5, 50, 95].
 
     Returns
@@ -539,7 +539,7 @@ def summary_table(
             f"{stats['std']:.4f}",
         ]
         for p in percentiles:
-            key = f"{p}%"
+            key = f"{p:g}%"
             row.append(f"{stats.get(key, 0.0):.4f}")
         row.append(f"{stats.get('ess', 0.0):.1f}")
         r_hat_val = stats.get("r_hat", float("nan"))
