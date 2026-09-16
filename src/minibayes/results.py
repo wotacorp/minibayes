@@ -74,7 +74,7 @@ class InferenceResult:
 
     def summary(
         self,
-        percentiles: list[int] | None = None,
+        percentiles: list[float] | None = None,
         params: list[str] | None = None,
     ) -> dict[str, dict[str, float]]:
         """
@@ -82,8 +82,10 @@ class InferenceResult:
 
         Parameters
         ----------
-        percentiles : list[int], optional
+        percentiles : list[float], optional
             Percentiles to compute. Default: [5, 50, 95].
+            Non-integral values are allowed (e.g. 2.5 / 97.5 for a 95% interval);
+            keys are formatted with %g (2.5 -> "2.5%").
         params : list[str], optional
             Parameters to include. Default: all.
 
